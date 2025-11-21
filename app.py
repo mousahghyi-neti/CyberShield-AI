@@ -32,6 +32,7 @@ st.markdown("""
         text-transform: uppercase;
     }
     .stButton button:hover {background-color: #b59326;}
+    .error-box {color: #ff4b4b; font-size: 12px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -47,7 +48,25 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+# --- الدالة الذكية لاختيار الموديل (The Smart Selector) ---
+# هذه الدالة هي "العقل المدبر" لتجنب الأخطاء السابقة
+def get_response(prompt_text):
+    # القائمة الذهبية: نبدأ بالأقوى (الذي عمل معك سابقاً) ثم الاحتياطي
+    models_priority = ['gemini-2.5-flash', 'gemini-pro']
+    
+    last_error = None
+    for model_name in models_priority:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt_text)
+            return response.text # نجحنا! نخرج من الدالة فوراً
+        except Exception as e:
+            last_error = e
+            continue # فشل هذا الموديل، نجرب التالي بصمت
+            
+    # إذا فشلت كل الموديلات، نرفع الراية الحمراء
+    raise last_error
 
 # --- المدخلات ---
 col1, col2 = st.columns([2, 1])
@@ -66,10 +85,8 @@ if st.button("استدعاء المجلس (Call The Council)"):
     if not problem:
         st.warning("القاعة صامتة.. اطرح موضوعاً للنقاش.")
     else:
-        # حاوية النتائج
         results_container = st.container()
         
-        # تعريف المستشارين
         advisors = [
             {"name": "Steve Jobs", "role": "VISIONARY & DESIGN", "style": "مباشر، قاسٍ، يركز على المنتج والتميز، يكره الحلول الوسط.", "icon": "🍎"},
             {"name": "Niccolò Machiavelli", "role": "POWER & STRATEGY", "style": "ماكر، واقعي جداً، يركز على السيطرة والمصلحة، الغاية تبرر الوسيلة.", "icon": "🦊"},
@@ -77,38 +94,35 @@ if st.button("استدعاء المجلس (Call The Council)"):
             {"name": "Hammad Hijazi", "role": "CHAIRMAN & SECURITY", "style": "حكيم، خبير أمني، يوزن المخاطر، ويعطي القرار النهائي المتزن الذي يحميك.", "icon": "🛡️"}
         ]
 
-        with st.spinner('المجلس يتداول الآن...'):
+        with st.spinner('جاري التشاور بين الأعضاء...'):
             for advisor in advisors:
-                # نصنع برومبت خاص لكل مستشار لضمان تقمص الشخصية
                 prompt = f"""
-                أنت تتقمص شخصية {advisor['name']}.
-                المستخدم يسأل: "{problem}"
+                تقمص شخصية: {advisor['name']}.
+                السياق: أنت في مجلس إدارة سري.
+                سؤال المستخدم: "{problem}"
                 
-                مطلوب منك:
-                1. قدم رأيك بناءً على فلسفتك ({advisor['style']}).
-                2. كن جريئاً ومباشراً واستخدم لغة تعكس شخصيتك.
-                3. تحدث بالعربية.
-                
-                لا تذكر أنك ذكاء اصطناعي. أنت الشخصية ذاتها.
+                مهمتك:
+                1. أعط رأياً يعكس فلسفتك ({advisor['style']}) بدقة تامة.
+                2. كن حازماً ومختصراً (لا تتجاوز 4 أسطر).
+                3. تحدث بالعربية بأسلوبك الخاص.
                 """
                 
                 try:
-                    # استدعاء المحرك لكل شخصية
-                    response = model.generate_content(prompt)
+                    # استخدام الدالة الذكية بدلاً من الاتصال المباشر
+                    reply = get_response(prompt)
                     
-                    # عرض البطاقة بشكل فخم وتدريجي (تأثير سينمائي)
-                    time.sleep(0.5) 
+                    time.sleep(0.3) 
                     with results_container:
                         st.markdown(f"""
                         <div class="advisor-card">
                             <div class="advisor-role">{advisor['icon']} {advisor['role']}</div>
                             <div class="advisor-name">{advisor['name']}</div>
-                            <div style="color: #ccc; line-height: 1.6;">{response.text}</div>
+                            <div style="color: #ccc; line-height: 1.6;">{reply}</div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                 except Exception as e:
-                    st.error(f"غادر {advisor['name']} القاعة بسبب خطأ: {e}")
+                    st.error(f"عذراً، {advisor['name']} غير متاح حالياً. (السبب: {e})")
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: #333;'>The Council System v1.0</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333;'>The Council System v2.0 (Self-Healing Core)</p>", unsafe_allow_html=True)
