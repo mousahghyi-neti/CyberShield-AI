@@ -1,80 +1,114 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+import time
 
-# --- إعداد الصفحة ---
-st.set_page_config(page_title="CyberShield Pro", page_icon="🛡️", layout="centered")
+# --- إعداد القاعة (Page Config) ---
+st.set_page_config(page_title="The Council | المجلس", page_icon="🏛️", layout="wide")
 
-# --- التصميم ---
+# --- تصميم الفخامة (Dark Mafia/Luxury Style) ---
 st.markdown("""
 <style>
-    .main {background-color: #0e1117; color: #fff;}
-    h1 {color: #00ff41; text-align: center;}
-    .stButton button {width: 100%; background-color: #28a745; color: white; font-weight: bold;}
-    .report {background-color: #1e1e1e; padding: 20px; border-radius: 10px; border-left: 5px solid #00ff41;}
+    .main {background-color: #050505; color: #e0e0e0;}
+    h1 {color: #d4af37; font-family: 'Times New Roman'; text-align: center; letter-spacing: 2px;}
+    .advisor-card {
+        background-color: #1a1a1a; 
+        border: 1px solid #333; 
+        border-left: 4px solid #d4af37;
+        padding: 20px; 
+        margin-bottom: 15px; 
+        border-radius: 5px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .advisor-name {color: #d4af37; font-size: 18px; font-weight: bold; margin-bottom: 10px; font-family: serif;}
+    .advisor-role {color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;}
+    .stTextArea textarea {background-color: #111; color: white; border: 1px solid #333;}
+    .stButton button {
+        width: 100%; 
+        background-color: #d4af37; 
+        color: black; 
+        font-weight: bold; 
+        border: none; 
+        padding: 10px;
+        text-transform: uppercase;
+    }
+    .stButton button:hover {background-color: #b59326;}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛡️ كاشف الاحتيال الشامل")
-st.caption("Powered by Hammad Hijazi | Supports Text & Screenshots")
+# --- العنوان ---
+st.title("🏛️ THE COUNCIL")
+st.markdown("<p style='text-align: center; color: gray; font-style: italic;'>حيث تجتمع العقول العظمى لاتخاذ قراراتك المصيرية</p>", unsafe_allow_html=True)
+st.divider()
 
 # --- الاتصال بالمحرك ---
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
-    st.error("⚠️ مفتاح API مفقود.")
+    st.error("⚠️ مفتاح الدخول للقاعة مفقود (API Key).")
     st.stop()
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-2.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- خيارات الإدخال ---
-option = st.radio("ماذا تريد أن تفحص؟", ("نص مشبوه", "صورة / لقطة شاشة"))
+# --- المدخلات ---
+col1, col2 = st.columns([2, 1])
+with col1:
+    problem = st.text_area("اطرح المعضلة أو القرار الذي تريد اتخاذه:", height=150, placeholder="مثال: هل يجب أن أترك وظيفتي وأبدأ مشروعي الخاص بميزانية محدودة؟")
 
-user_input = None
-image_input = None
+with col2:
+    st.markdown("### 👥 الأعضاء الحاضرون:")
+    st.markdown("✅ **Steve Jobs** (الابتكار)")
+    st.markdown("✅ **Machiavelli** (الدهاء)")
+    st.markdown("✅ **Jordan Belfort** (المال)")
+    st.markdown("🛡️ **Hammad Hijazi** (الأمن والحكمة)")
 
-if option == "نص مشبوه":
-    user_input = st.text_area("انسخ الرسالة هنا:", height=150)
-else:
-    image_upload = st.file_uploader("ارفع صورة المحادثة أو البريد الإلكتروني", type=["jpg", "png", "jpeg"])
-    if image_upload:
-        image_input = Image.open(image_upload)
-        st.image(image_input, caption="الصورة المرفقة", use_column_width=True)
-
-if st.button("🔍 فحص أمني فوري"):
-    if not user_input and not image_input:
-        st.warning("الرجاء إدخال بيانات للتحليل.")
+# --- زر الاستدعاء ---
+if st.button("استدعاء المجلس (Call The Council)"):
+    if not problem:
+        st.warning("القاعة صامتة.. اطرح موضوعاً للنقاش.")
     else:
-        try:
-            with st.spinner('جاري تحليل الأدلة الجنائية...'):
+        # حاوية النتائج
+        results_container = st.container()
+        
+        # تعريف المستشارين
+        advisors = [
+            {"name": "Steve Jobs", "role": "VISIONARY & DESIGN", "style": "مباشر، قاسٍ، يركز على المنتج والتميز، يكره الحلول الوسط.", "icon": "🍎"},
+            {"name": "Niccolò Machiavelli", "role": "POWER & STRATEGY", "style": "ماكر، واقعي جداً، يركز على السيطرة والمصلحة، الغاية تبرر الوسيلة.", "icon": "🦊"},
+            {"name": "Jordan Belfort", "role": "SALES & MONEY", "style": "حماسي، جشع، يركز على الربح السريع وكيفية بيع الفكرة لأي شخص.", "icon": "💸"},
+            {"name": "Hammad Hijazi", "role": "CHAIRMAN & SECURITY", "style": "حكيم، خبير أمني، يوزن المخاطر، ويعطي القرار النهائي المتزن الذي يحميك.", "icon": "🛡️"}
+        ]
+
+        with st.spinner('المجلس يتداول الآن...'):
+            for advisor in advisors:
+                # نصنع برومبت خاص لكل مستشار لضمان تقمص الشخصية
+                prompt = f"""
+                أنت تتقمص شخصية {advisor['name']}.
+                المستخدم يسأل: "{problem}"
                 
-                # هندسة الأوامر للنص أو الصورة
-                prompt = """
-                أنت خبير أمن سيبراني (Hammad Hijazi). 
-                حلل هذا المحتوى (سواء كان نصاً أو صورة).
-                استخرج النصوص من الصورة إن وجدت وحللها.
+                مطلوب منك:
+                1. قدم رأيك بناءً على فلسفتك ({advisor['style']}).
+                2. كن جريئاً ومباشراً واستخدم لغة تعكس شخصيتك.
+                3. تحدث بالعربية.
                 
-                1. هل هذا احتيال؟ (نعم/لا)
-                2. ما هي العلامات الحمراء؟
-                3. النصيحة الذهبية للمستخدم؟
-                
-                اجعل الإجابة بالعربية ومنسقة.
+                لا تذكر أنك ذكاء اصطناعي. أنت الشخصية ذاتها.
                 """
                 
-                if image_input:
-                    # إرسال الصورة والبرومبت معاً
-                    response = model.generate_content([prompt, image_input])
-                else:
-                    # إرسال النص والبرومبت
-                    response = model.generate_content(f"{prompt}\nالنص للتحليل: {user_input}")
-                
-                # عرض النتيجة
-                st.markdown("---")
-                st.markdown(f"""
-                <div class="report">
-                {response.text}
-                </div>
-                """, unsafe_allow_html=True)
-                
-        except Exception as e:
-            st.error(f"حدث خطأ: {e}")
+                try:
+                    # استدعاء المحرك لكل شخصية
+                    response = model.generate_content(prompt)
+                    
+                    # عرض البطاقة بشكل فخم وتدريجي (تأثير سينمائي)
+                    time.sleep(0.5) 
+                    with results_container:
+                        st.markdown(f"""
+                        <div class="advisor-card">
+                            <div class="advisor-role">{advisor['icon']} {advisor['role']}</div>
+                            <div class="advisor-name">{advisor['name']}</div>
+                            <div style="color: #ccc; line-height: 1.6;">{response.text}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                except Exception as e:
+                    st.error(f"غادر {advisor['name']} القاعة بسبب خطأ: {e}")
+
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: #333;'>The Council System v1.0</p>", unsafe_allow_html=True)
