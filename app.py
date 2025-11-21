@@ -1,44 +1,38 @@
 import streamlit as st
 import google.generativeai as genai
-import json
-import os
 import re
 
-# --- [CONFIGURATION] ---
-LOG_FILE = "abyss_memory_v6.json"
-st.set_page_config(page_title="Dev Squad | Live Sandbox", page_icon="⚡", layout="wide")
+# --- [1. إعداد النظام والحماية] ---
+# هذه النقطة حرجة جداً لمنع الشاشة السوداء
+# نضعها داخل try-except لضمان عدم توقف النظام إذا تم الإعداد مسبقاً
+try:
+    st.set_page_config(page_title="Dev Squad | Stable", page_icon="🛡️", layout="wide")
+except:
+    pass
 
-# --- [CORE FUNCTIONS] ---
-def load_memory():
-    if os.path.exists(LOG_FILE):
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return None
-    return None
-
-def save_memory():
-    data = {
-        "messages": st.session_state.messages,
-        "current_code": st.session_state.current_code,
-        "dark_plan": st.session_state.dark_plan
-    }
-    with open(LOG_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
+# --- [2. دوال الاتصال الذكي] ---
 def call_ai_agent(agent_role, prompt_text):
-    models_priority = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-pro']
-    for model_name in models_priority:
+    """محاولة الاتصال بعدة موديلات لضمان عدم التوقف"""
+    # القائمة: نبدأ بالفلاش السريع، ثم البرو المستقر
+    models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-pro']
+    
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    if not api_key:
+        return "Error: API Key Missing. Please check Streamlit Secrets."
+
+    genai.configure(api_key=api_key)
+
+    for model_name in models:
         try:
             model = genai.GenerativeModel(model_name)
-            config = genai.types.GenerationConfig(temperature=0.7) 
+            # حرارة متوسطة (0.7) لتوازن الإبداع والدقة في الكود
+            config = genai.types.GenerationConfig(temperature=0.7)
             response = model.generate_content(prompt_text, generation_config=config)
             return response.text
         except:
-            continue
-    return "⚠️ Error: Connection Failed."
+            continue # إذا فشل موديل، ننتقل للتالي بصمت
+    return "⚠️ Error: All AI models are busy or unreachable."
 
 def extract_code(text):
-    """استخراج الكود الصافي من رد الذكاء الاصطناعي"""
-    # محاولة استخراج ما بين ``` و
+    """تنظيف الكود من النصوص الزائدة (Markdown)"""
+    # نبحث عن الكود الموجود بين علامات
