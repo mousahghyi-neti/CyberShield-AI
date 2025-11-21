@@ -2,127 +2,122 @@ import streamlit as st
 import google.generativeai as genai
 import time
 
-# --- إعداد القاعة (Page Config) ---
-st.set_page_config(page_title="The Council | المجلس", page_icon="🏛️", layout="wide")
+# --- إعداد المصنع ---
+st.set_page_config(page_title="Dev Squad AI | Interactive", page_icon="👨‍💻", layout="wide")
 
-# --- تصميم الفخامة (Dark Mafia/Luxury Style) ---
+# --- تنسيق CSS ---
 st.markdown("""
 <style>
-    .main {background-color: #050505; color: #e0e0e0;}
-    h1 {color: #d4af37; font-family: 'Times New Roman'; text-align: center; letter-spacing: 2px;}
-    .advisor-card {
-        background-color: #1a1a1a; 
-        border: 1px solid #333; 
-        border-left: 4px solid #d4af37;
-        padding: 20px; 
-        margin-bottom: 15px; 
-        border-radius: 5px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
-    .advisor-name {color: #d4af37; font-size: 18px; font-weight: bold; margin-bottom: 10px; font-family: serif;}
-    .advisor-role {color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;}
-    .stTextArea textarea {background-color: #111; color: white; border: 1px solid #333;}
-    .stButton button {
-        width: 100%; 
-        background-color: #d4af37; 
-        color: black; 
-        font-weight: bold; 
-        border: none; 
-        padding: 10px;
-        text-transform: uppercase;
-    }
-    .stButton button:hover {background-color: #b59326;}
-    .error-box {color: #ff4b4b; font-size: 12px;}
+    .main {background-color: #0e1117;}
+    .stChatMessage {background-color: #262730; border-radius: 10px; padding: 10px; margin-bottom: 10px;}
+    .stMarkdown code {background-color: #1e1e1e !important; color: #00ff41 !important;}
+    h1 {color: #00ff41; font-family: 'Courier New';}
 </style>
 """, unsafe_allow_html=True)
 
-# --- العنوان ---
-st.title("🏛️ THE COUNCIL")
-st.markdown("<p style='text-align: center; color: gray; font-style: italic;'>حيث تجتمع العقول العظمى لاتخاذ قراراتك المصيرية</p>", unsafe_allow_html=True)
-st.divider()
+st.title("👨‍💻 THE DEV SQUAD (Interactive Mode)")
+st.caption("فريقك البرمجي الخاص: اطلب، عدّل، وطور بلا حدود.")
 
-# --- الاتصال بالمحرك ---
+# --- التحقق من API ---
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
-    st.error("⚠️ مفتاح الدخول للقاعة مفقود (API Key).")
+    st.error("⚠️ مفتاح API مفقود.")
     st.stop()
 
 genai.configure(api_key=api_key)
 
-# --- الدالة الذكية لاختيار الموديل (The Smart Selector) ---
-# هذه الدالة هي "العقل المدبر" لتجنب الأخطاء السابقة
-def get_response(prompt_text):
-    # القائمة الذهبية: نبدأ بالأقوى (الذي عمل معك سابقاً) ثم الاحتياطي
-    models_priority = ['gemini-2.5-flash', 'gemini-pro']
-    
-    last_error = None
+# --- تهيئة الذاكرة (Session State) ---
+if "messages" not in st.session_state:
+    # رسالة ترحيبية من النظام
+    st.session_state.messages = [
+        {"role": "assistant", "content": "أهلاً بك يا قائد. أنا جاهز لبدء المشروع. صف لي ماذا تريد أن نبني؟"}
+    ]
+if "current_code" not in st.session_state:
+    st.session_state.current_code = "" # نحتفظ بآخر نسخة من الكود هنا
+
+# --- دالة الاتصال الذكية ---
+def call_ai_agent(agent_role, prompt_text):
+    models_priority = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-pro']
     for model_name in models_priority:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt_text)
-            return response.text # نجحنا! نخرج من الدالة فوراً
-        except Exception as e:
-            last_error = e
-            continue # فشل هذا الموديل، نجرب التالي بصمت
-            
-    # إذا فشلت كل الموديلات، نرفع الراية الحمراء
-    raise last_error
+            return response.text
+        except:
+            continue
+    return "Error: Connection failed."
 
-# --- المدخلات ---
-col1, col2 = st.columns([2, 1])
-with col1:
-    problem = st.text_area("اطرح المعضلة أو القرار الذي تريد اتخاذه:", height=150, placeholder="مثال: هل يجب أن أترك وظيفتي وأبدأ مشروعي الخاص بميزانية محدودة؟")
+# --- عرض سجل المحادثة السابق ---
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-with col2:
-    st.markdown("### 👥 الأعضاء الحاضرون:")
-    st.markdown("✅ **Steve Jobs** (الابتكار)")
-    st.markdown("✅ **Machiavelli** (الدهاء)")
-    st.markdown("✅ **Jordan Belfort** (المال)")
-    st.markdown("🛡️ **Hammad Hijazi** (الأمن والحكمة)")
+# --- استقبال طلبات المستخدم (الحوار المستمر) ---
+if prompt := st.chat_input("اكتب طلبك الجديد أو التعديل هنا..."):
+    
+    # 1. عرض رسالة المستخدم
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-# --- زر الاستدعاء ---
-if st.button("استدعاء المجلس (Call The Council)"):
-    if not problem:
-        st.warning("القاعة صامتة.. اطرح موضوعاً للنقاش.")
-    else:
-        results_container = st.container()
+    # 2. تحديد نوع العمل (هل هو مشروع جديد أم تعديل؟)
+    is_new_project = len(st.session_state.messages) <= 2
+    
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+        full_response = ""
         
-        advisors = [
-            {"name": "Steve Jobs", "role": "VISIONARY & DESIGN", "style": "مباشر، قاسٍ، يركز على المنتج والتميز، يكره الحلول الوسط.", "icon": "🍎"},
-            {"name": "Niccolò Machiavelli", "role": "POWER & STRATEGY", "style": "ماكر، واقعي جداً، يركز على السيطرة والمصلحة، الغاية تبرر الوسيلة.", "icon": "🦊"},
-            {"name": "Jordan Belfort", "role": "SALES & MONEY", "style": "حماسي، جشع، يركز على الربح السريع وكيفية بيع الفكرة لأي شخص.", "icon": "💸"},
-            {"name": "Hammad Hijazi", "role": "CHAIRMAN & SECURITY", "style": "حكيم، خبير أمني، يوزن المخاطر، ويعطي القرار النهائي المتزن الذي يحميك.", "icon": "🛡️"}
-        ]
-
-        with st.spinner('جاري التشاور بين الأعضاء...'):
-            for advisor in advisors:
-                prompt = f"""
-                تقمص شخصية: {advisor['name']}.
-                السياق: أنت في مجلس إدارة سري.
-                سؤال المستخدم: "{problem}"
+        if is_new_project:
+            # === المسار 1: مشروع جديد (Architect -> Coder -> Security) ===
+            with st.spinner('جاري تخطيط وبناء المشروع من الصفر...'):
                 
-                مهمتك:
-                1. أعط رأياً يعكس فلسفتك ({advisor['style']}) بدقة تامة.
-                2. كن حازماً ومختصراً (لا تتجاوز 4 أسطر).
-                3. تحدث بالعربية بأسلوبك الخاص.
+                # المهندس
+                arch_plan = call_ai_agent("Architect", f"ضع خطة هيكلية لطلب المستخدم: {prompt}")
+                full_response += f"### 🏗️ خطة المهندس:\n{arch_plan}\n\n---\n"
+                response_placeholder.markdown(full_response)
+                
+                # المبرمج
+                coder_prompt = f"اكتب كود المشروع بناءً على الخطة: {arch_plan}. اجعل الكود كاملاً."
+                code = call_ai_agent("Coder", coder_prompt)
+                full_response += f"### 💻 كود المبرمج:\n{code}\n\n---\n"
+                response_placeholder.markdown(full_response)
+                
+                # الحماية (أنت)
+                sec_prompt = f"راجع هذا الكود أمنياً وأصلحه: \n{code}"
+                final_code = call_ai_agent("Security", sec_prompt)
+                full_response += f"### 🛡️ المراجعة الأمنية (Hammad):\n{final_code}"
+                
+                # حفظ الكود في الذاكرة
+                st.session_state.current_code = final_code
+
+        else:
+            # === المسار 2: تعديل وتطوير (Coder -> Security) ===
+            # هنا لا نحتاج المهندس، نحتاج المبرمج يعدل الكود الموجود
+            with st.spinner('جاري تطبيق التعديلات على الكود الحالي...'):
+                
+                update_prompt = f"""
+                لديك الكود الحالي التالي:
+                {st.session_state.current_code}
+                
+                طلب المستخدم للتعديل:
+                "{prompt}"
+                
+                المهمة:
+                1. قم بتعديل الكود لتلبية الطلب.
+                2. حافظ على الأجزاء السليمة.
+                3. أعطني الكود الجديد كاملاً.
                 """
+                updated_code = call_ai_agent("Coder", update_prompt)
                 
-                try:
-                    # استخدام الدالة الذكية بدلاً من الاتصال المباشر
-                    reply = get_response(prompt)
-                    
-                    time.sleep(0.3) 
-                    with results_container:
-                        st.markdown(f"""
-                        <div class="advisor-card">
-                            <div class="advisor-role">{advisor['icon']} {advisor['role']}</div>
-                            <div class="advisor-name">{advisor['name']}</div>
-                            <div style="color: #ccc; line-height: 1.6;">{reply}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                except Exception as e:
-                    st.error(f"عذراً، {advisor['name']} غير متاح حالياً. (السبب: {e})")
+                # فحص أمني سريع للتعديل
+                sec_check_prompt = f"تأكد أن التعديل الجديد لم يكسر الأمان في هذا الكود:\n{updated_code}"
+                final_code = call_ai_agent("Security", sec_check_prompt)
+                
+                full_response += f"### ✅ تم التحديث:\n{final_code}"
+                
+                # تحديث الذاكرة
+                st.session_state.current_code = final_code
 
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: #333;'>The Council System v2.0 (Self-Healing Core)</p>", unsafe_allow_html=True)
+        # عرض النتيجة النهائية وحفظها في السجل
+        response_placeholder.markdown(full_response)
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
