@@ -1,8 +1,9 @@
 import streamlit as st
 import google.generativeai as genai
+from PIL import Image
 
 # --- إعداد الصفحة ---
-st.set_page_config(page_title="CyberShield 2025", page_icon="🛡️", layout="centered")
+st.set_page_config(page_title="CyberShield Pro", page_icon="🛡️", layout="centered")
 
 # --- التصميم ---
 st.markdown("""
@@ -14,42 +15,58 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛡️ كاشف الاحتيال (Gen 2.5)")
-st.caption("Powered by Hammad Hijazi | Gemini 2.5 Flash Engine")
+st.title("🛡️ كاشف الاحتيال الشامل")
+st.caption("Powered by Hammad Hijazi | Supports Text & Screenshots")
 
 # --- الاتصال بالمحرك ---
 api_key = st.secrets.get("GEMINI_API_KEY")
-
 if not api_key:
-    st.error("⚠️ مفتاح API مفقود. تأكد من وضعه في Secrets.")
+    st.error("⚠️ مفتاح API مفقود.")
     st.stop()
 
 genai.configure(api_key=api_key)
-
-# --- استخدام الموديل الذي ظهر في قائمتك ---
-# اخترنا هذا الموديل لأنه الأسرع والأحدث في قائمتك
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-# --- الواجهة ---
-user_input = st.text_area("انسخ الرسالة أو الرابط المشبوه هنا:", height=150)
+# --- خيارات الإدخال ---
+option = st.radio("ماذا تريد أن تفحص؟", ("نص مشبوه", "صورة / لقطة شاشة"))
+
+user_input = None
+image_input = None
+
+if option == "نص مشبوه":
+    user_input = st.text_area("انسخ الرسالة هنا:", height=150)
+else:
+    image_upload = st.file_uploader("ارفع صورة المحادثة أو البريد الإلكتروني", type=["jpg", "png", "jpeg"])
+    if image_upload:
+        image_input = Image.open(image_upload)
+        st.image(image_input, caption="الصورة المرفقة", use_column_width=True)
 
 if st.button("🔍 فحص أمني فوري"):
-    if not user_input:
-        st.warning("الرجاء إدخال نص للتحليل.")
+    if not user_input and not image_input:
+        st.warning("الرجاء إدخال بيانات للتحليل.")
     else:
         try:
-            with st.spinner('جاري تحليل النوايا الخبيثة باستخدام Gemini 2.5...'):
-                # هندسة الأوامر
-                prompt = f"""
-                أنت خبير أمن سيبراني. حلل النص التالي:
-                "{user_input}"
+            with st.spinner('جاري تحليل الأدلة الجنائية...'):
                 
-                هل هذا احتيال؟ (نعم/لا)
-                ما هي العلامات الحمراء؟
-                ما النصيحة للمستخدم؟
-                اجعل الإجابة قصيرة، حازمة، وبالعربية.
+                # هندسة الأوامر للنص أو الصورة
+                prompt = """
+                أنت خبير أمن سيبراني (Hammad Hijazi). 
+                حلل هذا المحتوى (سواء كان نصاً أو صورة).
+                استخرج النصوص من الصورة إن وجدت وحللها.
+                
+                1. هل هذا احتيال؟ (نعم/لا)
+                2. ما هي العلامات الحمراء؟
+                3. النصيحة الذهبية للمستخدم؟
+                
+                اجعل الإجابة بالعربية ومنسقة.
                 """
-                response = model.generate_content(prompt)
+                
+                if image_input:
+                    # إرسال الصورة والبرومبت معاً
+                    response = model.generate_content([prompt, image_input])
+                else:
+                    # إرسال النص والبرومبت
+                    response = model.generate_content(f"{prompt}\nالنص للتحليل: {user_input}")
                 
                 # عرض النتيجة
                 st.markdown("---")
