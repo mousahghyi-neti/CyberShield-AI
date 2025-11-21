@@ -33,7 +33,7 @@ def analyze_text(text):
         return "الرجاء إدخال مفتاح API."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-pro')
     
     # هنا يكمن السحر: هندسة الأوامر (Prompt Engineering) لتقمص شخصيتك
     prompt = f"""
