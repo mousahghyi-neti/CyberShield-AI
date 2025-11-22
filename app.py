@@ -7,11 +7,11 @@ import time
 import zipfile
 import io
 import re
-from duckduckgo_search import DDGS  # <--- عين المجلس على الإنترنت
+from duckduckgo_search import DDGS
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE OMNIPOTENT COUNCIL | V14",
+    page_title="THE COUNCIL V15 | Smart Selection",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -20,7 +20,7 @@ st.set_page_config(
 # --- ملف الذاكرة ---
 MEMORY_FILE = "council_history.json"
 
-# --- دوال إدارة الذاكرة (المطورة - Feature 2) ---
+# --- دوال إدارة الذاكرة ---
 def load_memory():
     if os.path.exists(MEMORY_FILE):
         try:
@@ -41,45 +41,30 @@ def clear_memory():
         os.remove(MEMORY_FILE)
 
 def get_relevant_context(query):
-    """
-    (Feature 2: RAG Lite)
-    يبحث في الذاكرة عن آخر 3 قرارات لتزويد المجلس بسياق تاريخي.
-    """
     history = load_memory()
-    if not history:
-        return "لا توجد سجلات سابقة."
-    
-    # نأخذ آخر 3 قرارات كـ "سياق قصير المدى"
+    if not history: return ""
     recent = history[-3:]
     context_text = ""
     for item in recent:
-        context_text += f"- في تاريخ {item['date']} ناقشنا '{item.get('topic', 'N/A')}' وكان القرار: {item.get('summary', 'N/A')}\n"
+        context_text += f"- {item['date']}: {item.get('summary', 'N/A')}\n"
     return context_text
 
-# --- دالة البحث عبر الإنترنت (Feature 4) ---
+# --- دالة الإنترنت ---
 def search_web(query):
-    """
-    (Feature 4: Internet Access)
-    تستخدم DuckDuckGo للبحث عن معلومات حية.
-    """
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=3))
             if results:
-                summary = "\n".join([f"- {r['title']}: {r['body']}" for r in results])
-                return summary
-            return "لم يتم العثور على نتائج."
+                return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+            return "لا توجد نتائج."
     except Exception as e:
-        return f"تعذر الاتصال بالإنترنت: {str(e)}"
+        return f"خطأ إنترنت: {str(e)}"
 
-# --- دالة ضغط الملفات (من الإصدار السابق) ---
+# --- دالة ضغط الملفات ---
 def create_zip_from_response(text):
     zip_buffer = io.BytesIO()
     code_blocks = re.findall(r"```(\w+)?\n(.*?)```", text, re.DOTALL)
-    
-    if not code_blocks:
-        return None
-
+    if not code_blocks: return None
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for i, (lang, code) in enumerate(code_blocks):
             lang = lang.lower().strip() if lang else "txt"
@@ -89,17 +74,40 @@ def create_zip_from_response(text):
             elif "css" in lang: ext = "css"
             elif "javascript" in lang or "js" in lang: ext = "js"
             elif "json" in lang: ext = "json"
-            
             filename_match = re.search(r"filename:\s*([\w\-\.]+)", code)
-            if filename_match:
-                filename = filename_match.group(1)
-            else:
-                filename = f"file_{i+1}_{lang}.{ext}"
-            
+            filename = filename_match.group(1) if filename_match else f"file_{i+1}.{ext}"
             zip_file.writestr(filename, code)
-            
     zip_buffer.seek(0)
     return zip_buffer
+
+# --- دالة جلب الموديلات الذكية (التحديث الجديد) ---
+def get_clean_model_list():
+    """
+    تعيد قائمة نظيفة بالموديلات المتاحة فعلياً فقط،
+    مع إعطاء الأولوية للموديلات المستقرة (Flash/Pro).
+    """
+    # القائمة الذهبية (الموديلات التي نريدها دائماً في المقدمة)
+    priority_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+    
+    try:
+        fetched_models = []
+        for m in genai.list_models():
+            # نأخذ فقط الموديلات التي تولد نصوصاً
+            if 'generateContent' in m.supported_generation_methods:
+                # تنظيف الاسم (حذف models/)
+                clean_name = m.name.replace("models/", "")
+                fetched_models.append(clean_name)
+        
+        # دمج القوائم: ابدأ بالأولوية، ثم أضف الباقي إذا لم يكن مكرراً
+        final_list = priority_models.copy()
+        for m in fetched_models:
+            if m not in final_list:
+                final_list.append(m)
+                
+        return final_list
+    except:
+        # في حال فشل الاتصال، نعود للقائمة اليدوية الآمنة
+        return priority_models
 
 # --- التصميم ---
 st.markdown("""
@@ -107,142 +115,118 @@ st.markdown("""
     .stApp { background-color: #050505; color: #e0e0e0; }
     h1, h2, h3 { font-family: 'Georgia', serif; color: #d4af37; }
     .advisor-card { background-color: #111; padding: 15px; border-radius: 8px; border-left: 4px solid #444; margin-bottom: 15px; }
-    .devil-card { background-color: #1a0505; padding: 15px; border-radius: 8px; border-left: 4px solid #ff0000; color: #ffcccc; box-shadow: 0 0 10px rgba(255,0,0,0.2); }
-    .overlord-card { background-color: #000; padding: 25px; border: 2px solid #d4af37; border-radius: 12px; font-size: 1.1em; box-shadow: 0 0 20px rgba(212, 175, 55, 0.2); }
-    .agent-step { color: #00ff00; font-family: 'Courier New', monospace; font-size: 0.9em; }
+    .devil-card { background-color: #1a0505; padding: 15px; border-radius: 8px; border-left: 4px solid #ff0000; color: #ffcccc; }
+    .overlord-card { background-color: #000; padding: 25px; border: 2px solid #d4af37; border-radius: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- API Setup ---
+# --- التهيئة ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-    available_models = ["models/gemini-1.5-flash", "models/gemini-pro"]
-except Exception as e:
-    st.error(f"⚠️ Error: {str(e)}")
+except:
+    st.error("⚠️ مفتاح API مفقود.")
     st.stop()
 
 # --- Sidebar ---
 with st.sidebar:
-    st.header("⚙️ غرفة التحكم")
-    selected_model = st.selectbox("المحرك:", available_models, index=0)
+    st.header("⚙️ الإعدادات")
+    
+    # --- قائمة الموديلات المطورة ---
+    clean_models = get_clean_model_list()
+    selected_model_name = st.selectbox("اختر المحرك (الأسرع أولاً):", clean_models, index=0)
+    
+    # إعادة إضافة بادئة models/ لأن API يحتاجها برمجياً
+    # إذا كان الاسم لا يحتوي عليها أصلاً
+    final_model_id = selected_model_name if selected_model_name.startswith("models/") else f"models/{selected_model_name}"
+    
+    st.caption(f"المعرف التقني: `{final_model_id}`")
     
     st.divider()
-    st.markdown("### 🌐 قدرات الشبكة")
-    enable_internet = st.checkbox("تفعيل البحث المباشر (Internet)", value=True)
-    enable_memory = st.checkbox("تفعيل الذاكرة السياقية (RAG)", value=True)
+    enable_internet = st.checkbox("بحث الإنترنت (Web)", value=True)
+    enable_memory = st.checkbox("الذاكرة (History)", value=True)
     
     st.divider()
-    if st.button("🗑️ فرمتة الذاكرة"):
+    if st.button("🗑️ مسح الذاكرة"):
         clear_memory()
         st.rerun()
 
-# --- AI Function ---
-def ask_gemini(prompt, sys_instruction, model_name):
+# --- AI Engine ---
+def ask_gemini(prompt, sys_instruction, model_id):
     try:
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel(model_id)
         full_payload = f"System Role: {sys_instruction}\n\nTask: {prompt}"
         response = model.generate_content(full_payload)
         return response.text
     except Exception as e:
-        if "429" in str(e): return "⚠️ تجاوز السرعة (استخدم Flash)."
+        if "429" in str(e): return "⚠️ الموديل مشغول (تجاوزت الحد). جرب Flash."
+        if "404" in str(e): return "⚠️ الموديل غير مدعوم في منطقتك، اختر غيره."
         return f"Error: {str(e)}"
 
 # --- Main UI ---
-st.markdown("<h1 style='text-align: center;'>👁️ THE OMNIPOTENT COUNCIL V14</h1>", unsafe_allow_html=True)
-st.caption("Agents (1) + Infinite Memory (2) + Internet Access (4)")
+st.markdown("<h1 style='text-align: center;'>🏛️ THE COUNCIL V15</h1>", unsafe_allow_html=True)
 
-problem = st.text_area("أدخل المهمة أو الهدف:", height=100)
+problem = st.text_area("الهدف الاستراتيجي:", height=100)
 
-# --- تعريف الوكلاء (Agents) ---
 advisors = {
-    "المخطط 📐": { "sys": "أنت المخطط. استخدم البيانات المتاحة لوضع خطة عمل دقيقة." },
-    "الشيطاني 😈": { "sys": "أنت الذكاء الشيطاني. استخدم معلومات المنافسين (من البحث) والذاكرة لسحقهم." },
-    "المبرمج 💻": { "sys": "أنت المبرمج. اكتب الأكواد. ضع تعليق # filename: name.ext في البداية." },
-    "الأمن 🛡️": { "sys": "أنت الأمن. افحص الخطة والكود." }
+    "المخطط 📐": { "sys": "أنت المخطط. ضع خطة عمل دقيقة." },
+    "الشيطاني 😈": { "sys": "أنت الذكاء الشيطاني. استغل كل ثغرة، اسحق المنافسين، فكر بالربح فقط." },
+    "المبرمج 💻": { "sys": "أنت المبرمج. اكتب الكود. ضع تعليق # filename: name.ext أولاً." },
+    "الأمن 🛡️": { "sys": "أنت الأمن. افحص الخطة." }
 }
 
-if st.button("تشغيل البروتوكول ⚡", use_container_width=True):
+if st.button("تنفيذ ⚡", use_container_width=True):
     if not problem:
         st.warning("أدخل البيانات.")
     else:
         results = st.container()
         progress_bar = st.progress(0)
-        status_text = st.empty()
+        status = st.empty()
         
-        # --- المرحلة 1: جمع المعلومات (Agents Logic) ---
-        collected_data = f"المشكلة الأساسية: {problem}\n\n"
+        # 1. جمع البيانات
+        data_packet = f"المهمة: {problem}\n\n"
         
-        # 1. وكيل الإنترنت (The Spy)
         if enable_internet:
-            status_text.markdown("🌐 **الجاسوس (The Spy):** يجوب الإنترنت بحثاً عن معلومات...")
-            web_results = search_web(problem)
-            collected_data += f"--- نتائج البحث المباشر (Live Internet Data) ---\n{web_results}\n\n"
-            with results:
-                with st.expander("🌐 تقرير الاستخبارات (من الإنترنت)", expanded=False):
-                    st.write(web_results)
-        
-        # 2. وكيل الذاكرة (The Historian)
+            status.text("جاري البحث في الشبكة...")
+            web_res = search_web(problem)
+            data_packet += f"--- بيانات الإنترنت ---\n{web_res}\n\n"
+            
         if enable_memory:
-            status_text.markdown("📚 **المؤرخ (The Historian):** يسترجع ملفات الماضي...")
-            past_context = get_relevant_context(problem)
-            collected_data += f"--- سياق من الذاكرة السابقة (Memory Context) ---\n{past_context}\n\n"
+            status.text("مراجعة الأرشيف...")
+            mem_res = get_relevant_context(problem)
+            data_packet += f"--- من الذاكرة ---\n{mem_res}\n\n"
         
-        # --- المرحلة 2: انعقاد المجلس ---
-        full_report_for_overlord = collected_data
-        
+        # 2. المستشارين
         with results:
             cols = st.columns(2)
-            total_steps = len(advisors) + 2 # +2 للبحث والمراجع
-            current_step = 1 # بدأنا بعد البحث
+            total = len(advisors) + 1
+            curr = 0
+            full_report = data_packet
             
-            for idx, (name, data) in enumerate(advisors.items()):
-                status_text.text(f"جاري استشارة {name} بناءً على البيانات الجديدة...")
-                
+            for idx, (name, info) in enumerate(advisors.items()):
+                status.text(f"استشارة {name}...")
                 with cols[idx % 2]:
-                    time.sleep(1)
-                    # نمرر البيانات المجمعة (بحث + ذاكرة) للمستشار
-                    advisor_prompt = f"البيانات المتاحة:\n{collected_data}\n\nمطلوب رأيك في المشكلة."
-                    reply = ask_gemini(advisor_prompt, data["sys"], selected_model)
-                    
-                    full_report_for_overlord += f"--- رأي {name} ---\n{reply}\n\n"
-                    
-                    st.markdown(f"""
-                    <div class="advisor-card">
-                        <b style="color:#d4af37">{name}</b><br>{reply}
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                current_step += 1
-                progress_bar.progress(current_step / total_steps)
-
-            # --- المرحلة 3: المراجع الأعظم (Overlord) ---
+                    time.sleep(1) # منع الحظر
+                    reply = ask_gemini(data_packet, info["sys"], final_model_id)
+                    full_report += f"--- {name} ---\n{reply}\n\n"
+                    st.markdown(f"<div class='advisor-card'><b>{name}</b><br>{reply}</div>", unsafe_allow_html=True)
+                curr += 1
+                progress_bar.progress(curr / total)
+            
+            # 3. المراجع
             st.markdown("---")
-            status_text.text("👁️ المراجع الأعظم يدمج البيانات (بحث + ذاكرة + آراء) لاتخاذ القرار...")
+            status.text("المراجع الأعظم يتخذ القرار...")
+            overlord_sys = "أنت المراجع الأعظم. ادمج الآراء واكتب الكود النهائي بتعليقات filename."
+            final = ask_gemini(full_report, overlord_sys, final_model_id)
             
-            overlord_sys = """
-            أنت المراجع الأعظم.
-            لديك صلاحية الوصول للإنترنت (تم البحث)، وللذاكرة (تم الاسترجاع)، ولآراء الخبراء.
-            1. اصنع الخطة النهائية (Master Plan).
-            2. اكتب أي كود برمجي مطلوب (بشكل كامل).
-            3. ضع تعليق # filename: example.py في بداية كل ملف كود.
-            """
+            st.markdown(f"<div class='overlord-card'>{final}</div>", unsafe_allow_html=True)
             
-            final_verdict = ask_gemini(full_report_for_overlord, overlord_sys, selected_model)
+            # 4. الملفات
+            zip_data = create_zip_from_response(final)
+            if zip_data:
+                st.download_button("📦 تحميل المشروع", zip_data, "project.zip", "application/zip")
             
-            st.markdown(f"<div class='overlord-card'>{final_verdict}</div>", unsafe_allow_html=True)
-            
-            # استخراج الملفات
-            zip_bytes = create_zip_from_response(final_verdict)
-            if zip_bytes:
-                st.download_button("📦 تحميل ملفات المشروع (ZIP)", zip_bytes, "project_v14.zip", "application/zip")
-            
-            # الحفظ في الذاكرة
-            save_memory({
-                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "topic": problem[:50],
-                "summary": final_verdict[:200] + "..."
-            })
-            
+            # 5. الحفظ
+            save_memory({"date": str(datetime.datetime.now()), "summary": final[:100] + "..."})
             progress_bar.progress(1.0)
-            status_text.text("✅ تمت المهمة بنجاح.")
+            status.text("✅ تم.")
