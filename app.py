@@ -4,10 +4,10 @@ import sys
 import io
 from contextlib import redirect_stdout
 
-# --- 1. ضبط البيئة (أهم خطوة) ---
+# --- 1. ضبط البيئة ---
 try:
     if "GEMINI_API_KEY" in st.secrets:
-        # CrewAI و LiteLLM يحتاجان لهذه التسميات تحديداً
+        # CrewAI الجديد يتطلب هذا الاسم تحديداً
         os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
         os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
     else:
@@ -21,7 +21,7 @@ from crewai.tools import tool
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V23 | Flash Force",
+    page_title="THE COUNCIL V24 | Native Force",
     page_icon="💀",
     layout="wide"
 )
@@ -37,9 +37,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. تحديد الموديل (الثابت والآمن) ---
-# لا بحث ديناميكي بعد الآن. نستخدم الفلاش لأنه الأضمن.
-# الصيغة: provider/model
+# --- 2. تحديد الموديل ---
+# بعد تثبيت [google-genai]، الصيغة الأضمن هي gemini/الموديل
 ACTIVE_MODEL = "gemini/gemini-1.5-flash"
 
 # --- تعريف الأداة (Tool) ---
@@ -61,22 +60,20 @@ class DevTools:
             return f"❌ Error:\n{str(e)}"
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V23</h1>", unsafe_allow_html=True)
-st.caption(f"System Locked on: **{ACTIVE_MODEL}** (Guaranteed Access)")
+st.markdown("<h1>💀 THE COUNCIL V24</h1>", unsafe_allow_html=True)
+st.caption(f"Engine: **{ACTIVE_MODEL}** | Provider: **Google Native**")
 
-mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: اكتب كود بايثون لاكتشاف المنافذ المفتوحة (Port Scanner) واختبره.")
+mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: اكتب كود بايثون لإنشاء سيرفر محلي بسيط واختباره.")
 
 if st.button("تنفيذ الهجوم البرمجي ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
         status_area = st.empty()
-        status_area.info("⏳ جاري تجنيد الوكلاء...")
+        status_area.info("⏳ جاري تجنيد الوكلاء وبدء العمليات...")
 
         try:
             # --- بناء الوكلاء ---
-            # نمرر ACTIVE_MODEL مباشرة لكل وكيل
-            
             planner = Agent(
                 role='Strategist',
                 goal='Plan execution steps.',
@@ -109,7 +106,7 @@ if st.button("تنفيذ الهجوم البرمجي ⚡"):
             task1 = Task(
                 description=f"Plan steps for: {mission}",
                 agent=planner,
-                expected_output="Plan steps."
+                expected_output="Step-by-step plan."
             )
 
             task2 = Task(
@@ -141,4 +138,4 @@ if st.button("تنفيذ الهجوم البرمجي ⚡"):
 
         except Exception as e:
             st.error(f"Error Details: {str(e)}")
-            st.info("تأكد من أنك تستخدم gemini-1.5-flash لأنه الأحدث.")
+            st.info("تلميح: تأكد من أن requirements.txt يحتوي على: crewai[google-genai]")
