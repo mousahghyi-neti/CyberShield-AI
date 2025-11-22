@@ -6,3 +6,5 @@ pandas
 numpy
 yfinance
 curl_cffi
+matplotlib
+scikit-learn
