@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V26 | Native Core",
+    page_title="THE COUNCIL V27 | Auto-Discovery",
     page_icon="💀",
     layout="wide"
 )
@@ -20,10 +20,11 @@ st.markdown("""
     .agent-box { border-left: 4px solid #d4af37; background: #111; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
     .agent-name { color: #d4af37; font-weight: bold; font-size: 1.1em; }
     .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #333; font-family: monospace; color: #00ff00; }
+    .stSelectbox div[data-baseweb="select"] > div { background-color: #1a1a1a; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- المفاتيح ---
+# --- 1. تهيئة المفاتيح ---
 try:
     if "GEMINI_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -33,89 +34,111 @@ try:
 except:
     st.stop()
 
-# --- المحرك الخاص بنا (Our Custom Agent Class) ---
+# --- 2. الفحص التلقائي للموديلات (The Scanner) ---
+# هذه الدالة هي الحل لمشكلتك. لن نخمن الاسم، بل سنجلبه من جوجل.
+@st.cache_data # نستخدم الكاش لعدم تكرار الطلب
+def get_available_models():
+    try:
+        models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                # تنظيف الاسم (حذف models/ للعرض الجميل)
+                models.append(m.name)
+        return models
+    except Exception as e:
+        return [f"Error fetching models: {e}"]
+
+# --- الشريط الجانبي لاختيار الموديل ---
+with st.sidebar:
+    st.header("⚙️ المحرك")
+    available_models = get_available_models()
+    
+    if not available_models:
+        st.error("لم يتم العثور على موديلات متاحة لحسابك!")
+        st.stop()
+        
+    # القائمة المنسدلة - اختر منها ما يعمل لديك سابقاً
+    selected_model = st.selectbox(
+        "اختر الموديل المتاح لك:",
+        available_models,
+        index=0
+    )
+    st.success(f"تم تفعيل: {selected_model}")
+
+# --- المحرك الخاص بنا (Native Agent) ---
 class NativeAgent:
-    def __init__(self, name, role, model_name="gemini-1.5-flash"):
+    def __init__(self, name, role, model_id):
         self.name = name
         self.role = role
+        # نستخدم الموديل الذي اخترته أنت من القائمة
         self.model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=f"You are {name}, {role}. Be precise and professional."
+            model_name=model_id,
+            system_instruction=f"You are {name}, {role}. Act accordingly."
         )
 
     def ask(self, prompt, context=""):
-        # دمج السياق السابق مع الطلب الجديد
-        full_prompt = f"CONTEXT:\n{context}\n\nYOUR TASK:\n{prompt}"
+        full_prompt = f"CONTEXT:\n{context}\n\nTASK:\n{prompt}"
         try:
             response = self.model.generate_content(full_prompt)
             return response.text
         except Exception as e:
             return f"Error: {str(e)}"
 
-# --- أداة تنفيذ الكود (Manual Tool) ---
+# --- أداة تنفيذ الكود ---
 def execute_python_code(text):
-    """
-    يستخرج كود بايثون من النص وينفذه.
-    """
-    # استخراج الكود بين علامات ```python و ```
     import re
     code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
     if not code_match:
         code_match = re.search(r"```\n(.*?)```", text, re.DOTALL)
     
     if not code_match:
-        return "⚠️ No executable code found in the response."
+        return "⚠️ No code found."
     
     code = code_match.group(1)
-    
     buffer = io.StringIO()
     try:
         with redirect_stdout(buffer):
             exec(code, globals())
-        return f"✅ Execution Output:\n{buffer.getvalue()}"
+        return f"✅ Output:\n{buffer.getvalue()}"
     except Exception as e:
-        return f"❌ Execution Error:\n{str(e)}"
+        return f"❌ Error:\n{str(e)}"
 
 # --- الواجهة ---
-st.markdown("<h1>💀 THE COUNCIL V26 (Native)</h1>", unsafe_allow_html=True)
-st.caption("Architecture: **Zero-Dependency Logic** (No CrewAI, No LangChain)")
+st.markdown("<h1>💀 THE COUNCIL V27</h1>", unsafe_allow_html=True)
+st.caption(f"Running on: **{selected_model}** (Auto-Detected)")
 
-mission = st.text_area("أدخل المهمة:", height=100, placeholder="مثال: اكتب كود بايثون لحساب مضروب الرقم 10.")
+mission = st.text_area("أدخل المهمة:", height=100)
 
-if st.button("تنفيذ الهجوم ⚡"):
+if st.button("تنفيذ ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
-        # حاوية النتائج
-        results_container = st.container()
+        results = st.container()
         
-        # 1. تعريف الوكلاء (يدوياً)
-        planner = NativeAgent("The Strategist", "Expert planner. Break down tasks into steps.")
-        coder = NativeAgent("The Developer", "Python expert. Write clean code inside ```python blocks.")
-        auditor = NativeAgent("The Auditor", "Security expert. Analyze results.")
+        # تعريف الوكلاء بالموديل المختار
+        planner = NativeAgent("Strategist", "Plan execution.", selected_model)
+        coder = NativeAgent("Developer", "Write python code.", selected_model)
+        auditor = NativeAgent("Auditor", "Review results.", selected_model)
 
-        with results_container:
-            # --- الخطوة 1: التخطيط ---
-            with st.spinner("1. المخطط يضع الاستراتيجية..."):
+        with results:
+            # 1. التخطيط
+            with st.spinner("التخطيط..."):
                 plan = planner.ask(mission)
                 st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
             
-            # --- الخطوة 2: البرمجة ---
-            with st.spinner("2. المبرمج يكتب الكود..."):
-                # نمرر خطة المخطط للمبرمج
-                code_response = coder.ask(f"Write python code to solve this based on the plan.", context=plan)
-                st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Developer</div>{code_response}</div>", unsafe_allow_html=True)
+            # 2. البرمجة
+            with st.spinner("البرمجة..."):
+                code_res = coder.ask(f"Write python code for this plan.", context=plan)
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Developer</div>{code_res}</div>", unsafe_allow_html=True)
 
-            # --- الخطوة 3: التنفيذ الفعلي (الأداة) ---
-            with st.spinner("3. تشغيل الكود في النظام..."):
-                execution_result = execute_python_code(code_response)
-                st.markdown(f"<div class='output-box'>{execution_result}</div>", unsafe_allow_html=True)
+            # 3. التنفيذ
+            with st.spinner("التنفيذ..."):
+                exec_res = execute_python_code(code_res)
+                st.markdown(f"<div class='output-box'>{exec_res}</div>", unsafe_allow_html=True)
 
-            # --- الخطوة 4: التدقيق ---
-            with st.spinner("4. المدقق يراجع النتائج..."):
-                # نمرر الكود ونتيجة التنفيذ للمدقق
-                full_context = f"PLAN: {plan}\nCODE: {code_response}\nEXECUTION RESULT: {execution_result}"
-                audit_report = auditor.ask("Review the code execution and confirm success.", context=full_context)
-                st.markdown(f"<div class='agent-box'><div class='agent-name'>🛡️ Auditor</div>{audit_report}</div>", unsafe_allow_html=True)
+            # 4. التدقيق
+            with st.spinner("التدقيق..."):
+                final_report = auditor.ask("Analyze execution result.", context=f"{plan}\n{code_res}\n{exec_res}")
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>🛡️ Auditor</div>{final_report}</div>", unsafe_allow_html=True)
                 
-        st.success("✅ تمت المهمة بنجاح.")
+        st.success("✅ تم.")
