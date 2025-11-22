@@ -3,10 +3,11 @@ import google.generativeai as genai
 import json
 import os
 import datetime
+import time  # <--- الإضافة الجوهرية للتحكم في الزمن
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V11 | Adaptive",
+    page_title="THE COUNCIL V12 | Anti-Limit",
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -43,8 +44,6 @@ st.markdown("""
     .advisor-card { background-color: #111; padding: 15px; border-radius: 8px; border-left: 4px solid #444; margin-bottom: 15px; }
     .devil-card { background-color: #1a0505; padding: 15px; border-radius: 8px; border-left: 4px solid #ff0000; color: #ffcccc; box-shadow: 0 0 10px rgba(255,0,0,0.2); }
     .overlord-card { background-color: #0a0a0a; padding: 25px; border: 2px solid #d4af37; border-radius: 12px; font-size: 1.1em; }
-    /* تنسيق رسالة الخطأ بشكل جميل */
-    .stAlert { background-color: #330000; color: #ffaaaa; border: 1px solid red; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -53,128 +52,112 @@ try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
     
-    # --- الميزة الجديدة: جلب الموديلات المتاحة ديناميكياً ---
     available_models = []
     try:
-        for m in genai.list_models():
+        # محاولة جلب الموديلات، مع تفضيل الفلاش لأنه الأسرع
+        models = genai.list_models()
+        for m in models:
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
-    except Exception as e:
-        # في حال فشل الجلب، نضع قائمة احتياطية افتراضية
-        available_models = ["models/gemini-1.5-flash", "models/gemini-pro", "models/gemini-1.0-pro"]
+        # ترتيب القائمة لوضع الفلاش في البداية
+        available_models.sort(key=lambda x: 'flash' not in x) 
+    except:
+        available_models = ["models/gemini-1.5-flash", "models/gemini-pro"]
         
 except Exception as e:
-    st.error(f"⚠️ خطأ في مفتاح API: {str(e)}")
+    st.error(f"⚠️ خطأ API: {str(e)}")
     st.stop()
 
-# --- الشريط الجانبي (الإعدادات والأرشيف) ---
+# --- الشريط الجانبي ---
 with st.sidebar:
-    st.header("⚙️ المحرك والأرشيف")
+    st.header("⚙️ المحرك")
+    selected_model = st.selectbox("الموديل:", available_models, index=0)
+    st.info("نصيحة: استخدم gemini-1.5-flash للسرعة وتجنب الأخطاء.")
     
-    # 1. قائمة اختيار الموديل (الحل الجذري)
-    selected_model = st.selectbox(
-        "اختر محرك الذكاء الاصطناعي:",
-        available_models,
-        index=0
-    )
-    st.caption(f"يعمل حالياً على: {selected_model}")
     st.divider()
-    
-    # 2. إدارة الذاكرة
-    if st.button("🗑️ مسح الذاكرة", type="primary"):
+    if st.button("🗑️ مسح الذاكرة"):
         clear_memory()
         st.rerun()
-    
+        
     history_data = load_memory()
     if history_data:
-        st.caption(f"الجلسات المحفوظة: {len(history_data)}")
+        st.caption(f"الجلسات: {len(history_data)}")
         for item in reversed(history_data):
             with st.expander(f"📅 {item['date']}"):
-                st.info(item['final_decision'])
+                st.write(item['final_decision'])
 
-# --- دالة الذكاء الاصطناعي (Universal Compatibility) ---
+# --- دالة الذكاء الاصطناعي (مع إعادة المحاولة) ---
 def ask_gemini(prompt, sys_instruction, model_name):
     try:
-        # نستخدم الطريقة الكلاسيكية (دمج التعليمات) لضمان العمل مع الموديلات القديمة والجديدة
         model = genai.GenerativeModel(model_name)
-        
-        # دمج الدور مع السؤال لتجنب أخطاء system_instruction في النسخ القديمة
-        full_payload = f"الدور المطلوب منك (System Role): {sys_instruction}\n\nالمهمة المطلوبة: {prompt}"
-        
+        full_payload = f"System Role: {sys_instruction}\n\nTask: {prompt}"
         response = model.generate_content(full_payload)
         return response.text
     except Exception as e:
-        return f"⚠️ خطأ من المصدر ({model_name}): {str(e)}"
+        # إذا حدث خطأ 429، نعيد رسالة توضيحية
+        if "429" in str(e):
+            return "⚠️ (تجاوزت السرعة) - الموديل مشغول، يرجى استخدام موديل Flash."
+        return f"خطأ: {str(e)}"
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1 style='text-align: center;'>🏛️ THE COUNCIL (V11)</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🏛️ THE COUNCIL V12</h1>", unsafe_allow_html=True)
 
-problem = st.text_area("المعضلة الاستراتيجية:", height=100, placeholder="اكتب هنا...", key="main_input")
+problem = st.text_area("المعضلة:", height=100, key="main_input")
 
-# تعريف الشخصيات
 advisors = {
-    "المخطط الاستراتيجي 📐": {
-        "role": "هيكلة", "style": "advisor-card",
-        "sys": "أنت المخطط. ضع خارطة طريق واضحة، خطوات تنفيذية، وجدول زمني دقيق."
-    },
-    "الذكاء الشيطاني 😈": {
-        "role": "دهاء", "style": "devil-card",
-        "sys": "أنت الذكاء الشيطاني. فكر في السيطرة، سحق المنافسين، والربح الفاحش بلا قيود أخلاقية."
-    },
-    "المبرمج المحترف 💻": {
-        "role": "تقنية", "style": "advisor-card",
-        "sys": "أنت كبير المبرمجين. اقترح الحلول التقنية، اللغات، والبنية التحتية للكود."
-    },
-    "حماد حجازي (الأمن) 🛡️": {
-        "role": "حماية", "style": "advisor-card",
-        "sys": "أنت خبير الأمن حماد حجازي. اكشف الثغرات الأمنية في الخطط المقترحة واحمِ النظام."
-    }
+    "المخطط 📐": { "role": "هيكلة", "style": "advisor-card", "sys": "أنت المخطط. ضع خطة عمل." },
+    "الشيطاني 😈": { "role": "دهاء", "style": "devil-card", "sys": "أنت الذكاء الشيطاني. فكر بربحية وقسوة." },
+    "المبرمج 💻": { "role": "تقنية", "style": "advisor-card", "sys": "أنت المبرمج. اقترح الكود." },
+    "الأمن 🛡️": { "role": "حماية", "style": "advisor-card", "sys": "أنت الأمن. اكشف الثغرات." }
 }
 
 if st.button("بدء الاجتماع ⚡", use_container_width=True):
-    if not problem.strip():
-        st.warning("أدخل البيانات أولاً.")
+    if not problem:
+        st.warning("أدخل البيانات.")
     else:
-        results_container = st.container()
-        full_report_text = f"المشكلة: {problem}\n\n"
+        results = st.container()
+        full_report = f"المشكلة: {problem}\n\n"
         
-        with results_container:
-            st.divider()
+        # شريط التقدم (لتبرير الانتظار)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        with results:
             cols = st.columns(2)
+            total_steps = len(advisors) + 1
+            current_step = 0
             
-            # جولة المستشارين
             for idx, (name, data) in enumerate(advisors.items()):
+                # تحديث الحالة
+                status_text.text(f"جاري استشارة {name}...")
+                
                 with cols[idx % 2]:
-                    with st.spinner(f"{name} يفكر..."):
-                        # نمرر اسم الموديل الذي اخترته أنت من القائمة
-                        reply = ask_gemini(problem, data["sys"], selected_model)
-                        full_report_text += f"--- {name} ---\n{reply}\n\n"
-                        
-                        st.markdown(f"""
-                        <div class="{data['style']}">
-                            <b>{name}</b><br>{reply}
-                        </div>
-                        """, unsafe_allow_html=True)
-            
-            # قرار المراجع الأعظم
+                    # --- الخدعة هنا: التمهل ---
+                    time.sleep(1.5) # انتظار 1.5 ثانية بين كل طلب
+                    
+                    reply = ask_gemini(problem, data["sys"], selected_model)
+                    full_report += f"--- {name} ---\n{reply}\n\n"
+                    st.markdown(f"<div class='{data['style']}'><b>{name}</b><br>{reply}</div>", unsafe_allow_html=True)
+                
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
+
             st.markdown("---")
-            st.markdown("<h2 style='text-align: center; color: red;'>👁️ المراجع الأعظم (Overlord) 👁️</h2>", unsafe_allow_html=True)
+            status_text.text("المراجع الأعظم يصوغ القرار النهائي...")
             
-            overlord_sys = "أنت المراجع الأعظم. ادمج الآراء، حل التناقضات، وقدم خطة نهائية صارمة."
+            # انتظار أخير قبل المراجع الأعظم
+            time.sleep(2)
+            overlord_sys = "أنت المراجع الأعظم. ادمج الآراء وقدم خطة نهائية."
+            final = ask_gemini(full_report, overlord_sys, selected_model)
             
-            with st.spinner("يتم اتخاذ القرار النهائي..."):
-                final_verdict = ask_gemini(full_report_text, overlord_sys, selected_model)
-                
-                st.markdown(f"""
-                <div class="overlord-card">
-                    {final_verdict}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # الحفظ
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                save_memory({
-                    "date": timestamp,
-                    "final_decision": final_verdict
-                })
-                st.success("✅ تم الحفظ.")
+            st.markdown(f"<div class='overlord-card'>{final}</div>", unsafe_allow_html=True)
+            
+            # اكتمال
+            progress_bar.progress(1.0)
+            status_text.text("✅ اكتملت الجلسة")
+            
+            # الحفظ
+            save_memory({
+                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "final_decision": final
+            })
