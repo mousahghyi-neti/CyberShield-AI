@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V34 | The Hive Mind",
+    page_title="THE COUNCIL V35 | The Finisher",
     page_icon="💀",
     layout="wide"
 )
@@ -22,7 +22,7 @@ st.markdown("""
     .agent-box { border-left: 4px solid #d4af37; background: #111; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
     .fixer-box { border-left: 4px solid #00ffff; background: #001111; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
     .agent-name { font-weight: bold; font-size: 1.1em; margin-bottom: 5px; }
-    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; }
+    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; white-space: pre-wrap; }
     .error-box { background: #2a0000; padding: 10px; border: 1px solid #ff0000; color: #ffaaaa; font-size: 0.9em; }
 </style>
 """, unsafe_allow_html=True)
@@ -51,7 +51,6 @@ with st.sidebar:
     st.header("⚙️ المحرك")
     available_models = get_available_models()
     if not available_models:
-        st.warning("Defaulting to Flash.")
         selected_model = "models/gemini-1.5-flash"
     else:
         default_ix = 0
@@ -60,22 +59,24 @@ with st.sidebar:
         selected_model = st.selectbox("اختر الموديل:", available_models, index=default_ix)
     
     st.divider()
-    st.info("💡 V34 New Agent: **The Fixer** (Dedicated Debugger)")
+    st.info("💡 V35 Protocol: FORCE SYNC EXECUTION (No Async)")
 
 # --- 3. كلاس الوكيل ---
 class NativeAgent:
-    def __init__(self, name, role, model_id, specialized_instruction=""):
+    def __init__(self, name, role, model_id):
         self.name = name
         self.role = role
+        # تعليمات صارمة: ممنوع الـ ASYNC، ويجب طباعة النتيجة
         sys_instruction = f"""
         You are {name}, {role}.
         
-        GLOBAL RULES:
-        1. Code Blocks: ```python ... ```
-        2. Dependencies: # pip: lib1 lib2
-        3. Stealth: Use 'curl_cffi' instead of 'requests' for scraping to bypass 403.
-        
-        {specialized_instruction}
+        CRITICAL RULES:
+        1. **NO ASYNC/AWAIT**: Do not use asyncio. Write standard SYNCHRONOUS python code.
+        2. **USE curl_cffi**: For scraping, use `from curl_cffi import requests`.
+           Usage: `requests.get(url, impersonate="chrome110")`.
+        3. **PRINT RESULTS**: You MUST print the final extracted data to the console using `print()`. If you don't print, the user sees nothing.
+        4. **DEPENDENCIES**: Declare top-level: # pip: curl_cffi beautifulsoup4
+        5. **ERROR FIXING**: If fixing code, return ONLY the code block.
         """
         self.model = genai.GenerativeModel(
             model_name=model_id,
@@ -108,7 +109,7 @@ def ensure_dependencies(code):
     all_libs = list(set(all_libs))
     
     if all_libs:
-        logs.append(f"📦 Deps found: {', '.join(all_libs)}")
+        logs.append(f"📦 Checking: {', '.join(all_libs)}")
         for lib in all_libs:
             try:
                 __import__(lib)
@@ -135,95 +136,68 @@ def run_code_safe(code):
 
 # --- 5. حلقة الخلية (The Hive Loop) ---
 def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
-    """
-    تستخدم هذه الدالة 'المصحح' (Fixer Agent) لإصلاح الأخطاء بدلاً من المطور الأصلي.
-    """
     current_code_text = initial_code_response
-    max_retries = 5 # زدنا عدد المحاولات كما طلبت
+    max_retries = 4
     attempt = 0
     logs_ui = []
 
     while attempt <= max_retries:
-        # 1. استخراج
         code = extract_code(current_code_text)
         if not code:
             return "⚠️ No code found.", logs_ui, current_code_text
 
-        # 2. تثبيت
         dep_logs = ensure_dependencies(code)
         if dep_logs: logs_ui.extend(dep_logs)
 
-        # 3. تشغيل
         success, output = run_code_safe(code)
 
         if success:
-            return f"✅ Execution Success:\n{output}", logs_ui, current_code_text
-        else:
-            error_msg = output
-            logs_ui.append(f"⚠️ Attempt {attempt+1}/{max_retries} Failed: {error_msg[:100]}...")
+            # إذا نجح الكود ولكن المخرجات فارغة، نعتبرها فشلاً منطقياً
+            if not output.strip():
+                error_msg = "Code ran successfully but PRINTED NOTHING. You must print() the extracted data."
+                success = False # نجبره على المحاولة مرة أخرى للطباعة
+            else:
+                return f"✅ Execution Success:\n{output}", logs_ui, current_code_text
+        
+        if not success:
+            error_msg = output if output else "No output printed."
+            logs_ui.append(f"⚠️ Attempt {attempt+1} Failed: {error_msg[:100]}...")
             
             if attempt == max_retries:
-                return f"❌ Failed after {max_retries} attempts. Last Error:\n{error_msg}", logs_ui, current_code_text
+                return f"❌ Failed. Last Error:\n{error_msg}", logs_ui, current_code_text
             
-            # 4. استدعاء المصحح (The Fixer)
             fix_prompt = f"""
-            The code failed with this error:
+            The code failed or didn't print anything. Error:
             "{error_msg}"
             
-            Current Code:
-            {code}
+            Requirement:
+            1. Use SYNCHRONOUS code (NO async/await).
+            2. Use 'curl_cffi' for requests.
+            3. You MUST print() the final result table/list.
             
-            YOUR TASK:
-            1. Analyze the traceback.
-            2. Rewrite the code to fix it.
-            3. If it's a 403 Forbidden, use 'curl_cffi'.
-            4. Return ONLY the corrected code block.
+            Fix it and return ONLY the code.
             """
-            # لاحظ: نطلب من fixer_agent وليس developer
             current_code_text = fixer_agent.ask(fix_prompt, context=context_plan)
             attempt += 1
             
     return "Unknown Error", logs_ui, current_code_text
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V34</h1>", unsafe_allow_html=True)
-st.caption(f"Mode: **Hive Mind (Dedicated Fixer)** | Engine: **{selected_model}**")
+st.markdown("<h1>💀 THE COUNCIL V35</h1>", unsafe_allow_html=True)
+st.caption(f"Focus: **Result Extraction** | Engine: **{selected_model}**")
 
-mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخرج بيانات من موقع يرفض البوتات.")
+mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخرج الرسائل من https://receive-smss.com/sms/31620171677/")
 
-if st.button("تنفيذ الهجوم (Hive Mode) ⚡"):
+if st.button("جلب البيانات (Execute) ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
         results = st.container()
         
-        # --- تعريف الفيلق (4 وكلاء) ---
-        planner = NativeAgent(
-            "Strategist", 
-            "Plan logical steps.", 
-            selected_model
-        )
+        planner = NativeAgent("Strategist", "Plan logical steps.", selected_model)
+        coder = NativeAgent("Developer", "Write SYNCHRONOUS python code.", selected_model)
+        fixer = NativeAgent("The Fixer", "Fix code bugs. Remove async/await.", selected_model)
         
-        coder = NativeAgent(
-            "Developer", 
-            "Write python code. Always declare deps: # pip: lib", 
-            selected_model
-        )
-        
-        # --- العميل الجديد: المصحح ---
-        fixer = NativeAgent(
-            "The Fixer", 
-            "You are a Code Debugger. You DO NOT write logic from scratch. You only FIX broken code based on errors.", 
-            selected_model,
-            specialized_instruction="Focus on syntax errors, missing libraries, and logic bugs."
-        )
-        
-        auditor = NativeAgent(
-            "Auditor", 
-            "Review final results.", 
-            selected_model
-        )
-
         with results:
             # 1. التخطيط
             with st.spinner("1. التخطيط..."):
@@ -231,29 +205,27 @@ if st.button("تنفيذ الهجوم (Hive Mode) ⚡"):
                 st.markdown(f"<div class='agent-box'><div class='agent-name' style='color:#d4af37'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
             
             # 2. الكود الأولي
-            with st.spinner("2. المبرمج يكتب الكود الأولي..."):
-                initial_code = coder.ask("Write python code for this plan. Use '# pip: lib' for dependencies.", context=plan)
+            with st.spinner("2. المبرمج (Sync Mode)..."):
+                initial_code = coder.ask("Write SYNCHRONOUS python code using curl_cffi. Print the output.", context=plan)
             
-            # 3. معركة الإصلاح (Hive Loop)
-            with st.spinner("3. اختبار الكود وتصحيحه (بواسطة The Fixer)..."):
-                # نمرر fixer هنا بدلاً من coder
+            # 3. التنفيذ
+            with st.spinner("3. التنفيذ وجلب البيانات..."):
                 final_output, debug_logs, final_code = smart_execute_with_hive(initial_code, fixer, plan)
                 
                 if debug_logs:
                     log_html = "<br>".join([f"<code>{l}</code>" for l in debug_logs])
                     st.markdown(f"<div class='install-box'>{log_html}</div>", unsafe_allow_html=True)
                 
-                # عرض من قام بالإصلاح النهائي
-                st.markdown(f"<div class='fixer-box'><div class='agent-name' style='color:#00ffff'>🔧 The Fixer (Final Code)</div>{final_code}</div>", unsafe_allow_html=True)
+                # عرض الكود النهائي
+                st.markdown(f"<div class='fixer-box'><div class='agent-name' style='color:#00ffff'>🔧 Final Code</div>{final_code}</div>", unsafe_allow_html=True)
                 
+                # عرض النتيجة (أهم جزء)
                 if "Success" in final_output:
-                    st.markdown(f"<div class='output-box'>{final_output}</div>", unsafe_allow_html=True)
+                    # تنظيف النتيجة لعرض البيانات فقط
+                    clean_output = final_output.replace("✅ Execution Success:\n", "")
+                    st.markdown(f"### 📊 البيانات المستخرجة:")
+                    st.markdown(f"<div class='output-box'>{clean_output}</div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div class='error-box'>{final_output}</div>", unsafe_allow_html=True)
-
-            # 4. التدقيق
-            with st.spinner("4. التدقيق النهائي..."):
-                report = auditor.ask("Audit this execution.", context=f"{plan}\n{final_output}")
-                st.markdown(f"<div class='agent-box'><div class='agent-name' style='color:#d4af37'>🛡️ Auditor</div>{report}</div>", unsafe_allow_html=True)
-                
-        st.success("✅ تمت المهمة.")
+        
+        st.success("✅ تمت المحاولة.")
