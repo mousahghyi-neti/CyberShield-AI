@@ -5,5 +5,4 @@ beautifulsoup4
 pandas
 numpy
 yfinance
-# --- سلاح التخفي الجديد ---
 curl_cffi
