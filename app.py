@@ -4,11 +4,22 @@ import sys
 import io
 from contextlib import redirect_stdout
 
-# --- 1. ضبط البيئة ---
+# --- 1. استيراد المكتبة المنقذة ---
+# نستخدم LangChain كـ وسيط موثوق لأنه يعالج مشاكل الـ API Version تلقائياً
+from langchain_google_genai import ChatGoogleGenerativeAI
+from crewai import Agent, Task, Crew, Process
+from crewai.tools import tool
+
+# --- إعدادات الصفحة ---
+st.set_page_config(
+    page_title="THE COUNCIL V25 | LangChain Bypass",
+    page_icon="💀",
+    layout="wide"
+)
+
+# --- المفاتيح ---
 try:
     if "GEMINI_API_KEY" in st.secrets:
-        # CrewAI الجديد يتطلب هذا الاسم تحديداً
-        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
         os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
     else:
         st.error("⚠️ مفتاح API مفقود.")
@@ -16,126 +27,102 @@ try:
 except:
     st.stop()
 
-from crewai import Agent, Task, Crew, Process
-from crewai.tools import tool
-
-# --- إعدادات الصفحة ---
-st.set_page_config(
-    page_title="THE COUNCIL V24 | Native Force",
-    page_icon="💀",
-    layout="wide"
-)
-
 # --- التصميم ---
 st.markdown("""
 <style>
-    .stApp { background-color: #050000; color: #e0e0e0; }
-    h1 { color: #ff3333; font-family: 'Courier New', monospace; text-shadow: 0 0 10px #ff0000; text-align:center; }
-    .stButton button { background-color: #990000; color: white; border: 1px solid red; width: 100%; }
-    .stButton button:hover { background-color: #ff0000; box-shadow: 0 0 15px red; }
-    .result-box { background-color: #220000; color: #ffcccc; padding: 15px; border-radius: 5px; border: 1px solid red; margin-top: 20px; }
+    .stApp { background-color: #000000; color: #e0e0e0; }
+    h1 { color: #ff0000; font-family: 'Courier New', monospace; text-align:center; }
+    .stButton button { background-color: #800000; color: white; border: 1px solid red; width: 100%; }
+    .result-box { background-color: #1a1a1a; border: 1px solid #333; padding: 15px; border-radius: 5px; margin-top: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. تحديد الموديل ---
-# بعد تثبيت [google-genai]، الصيغة الأضمن هي gemini/الموديل
-ACTIVE_MODEL = "gemini/gemini-1.5-flash"
+# --- 2. تعريف المحرك (The Engine) ---
+# هنا الحل: ننشئ الكائن يدوياً ونحدد الموديل "gemini-1.5-flash" بدون أي بادئات
+try:
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash",
+        verbose=True,
+        temperature=0.5,
+        google_api_key=os.environ["GOOGLE_API_KEY"]
+    )
+except Exception as e:
+    st.error(f"فشل تهيئة المحرك: {e}")
+    st.stop()
 
-# --- تعريف الأداة (Tool) ---
+# --- الأداة ---
 class DevTools:
     @tool("Python Executor")
     def execute_code(code: str):
-        """
-        Executes Python code securely. Input must be a clean python code string.
-        Returns the output (stdout) or error message.
-        """
+        """Executes Python code securely."""
         cleaned_code = code.replace("```python", "").replace("```", "").strip()
         buffer = io.StringIO()
         try:
             with redirect_stdout(buffer):
                 exec(cleaned_code, globals())
             output = buffer.getvalue()
-            return f"✅ Output:\n{output}" if output else "✅ Code executed (No Output)"
+            return f"✅ Output:\n{output}" if output else "✅ Executed (No Output)"
         except Exception as e:
             return f"❌ Error:\n{str(e)}"
 
-# --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V24</h1>", unsafe_allow_html=True)
-st.caption(f"Engine: **{ACTIVE_MODEL}** | Provider: **Google Native**")
+# --- الواجهة ---
+st.markdown("<h1>💀 THE COUNCIL V25</h1>", unsafe_allow_html=True)
+st.caption("Architecture: **LangChain Direct Wrapper** (Bypassing CrewAI String Parsing)")
 
-mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: اكتب كود بايثون لإنشاء سيرفر محلي بسيط واختباره.")
+mission = st.text_area("أدخل المهمة:", height=100, placeholder="مثال: اكتب كود بايثون لطباعة الوقت الحالي.")
 
-if st.button("تنفيذ الهجوم البرمجي ⚡"):
+if st.button("تشغيل النظام ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
-        status_area = st.empty()
-        status_area.info("⏳ جاري تجنيد الوكلاء وبدء العمليات...")
+        status = st.empty()
+        status.info("⏳ الاتصال المباشر بالموديل...")
 
         try:
-            # --- بناء الوكلاء ---
+            # --- الوكلاء ---
+            # نمرر المتغير llm (الكائن) وليس النص
+            
             planner = Agent(
                 role='Strategist',
-                goal='Plan execution steps.',
-                backstory="أنت المخطط الاستراتيجي.",
+                goal='Plan steps.',
+                backstory="Meticulous planner.",
                 allow_delegation=False,
-                verbose=True,
-                llm=ACTIVE_MODEL
+                llm=llm 
             )
 
             coder = Agent(
-                role='Python Developer',
-                goal='Write and RUN code.',
-                backstory="أنت مبرمج محترف. استخدم الأداة لتشغيل الكود.",
+                role='Developer',
+                goal='Code and Execute.',
+                backstory="Expert coder with execution tools.",
                 tools=[DevTools.execute_code],
                 allow_delegation=False,
-                verbose=True,
-                llm=ACTIVE_MODEL
+                llm=llm
             )
 
             reviewer = Agent(
-                role='Reviewer',
-                goal='Validate output.',
-                backstory="أنت المسؤول عن الجودة.",
+                role='Auditor',
+                goal='Validate.',
+                backstory="Quality assurance.",
                 allow_delegation=False,
-                verbose=True,
-                llm=ACTIVE_MODEL
+                llm=llm
             )
 
             # --- المهام ---
-            task1 = Task(
-                description=f"Plan steps for: {mission}",
-                agent=planner,
-                expected_output="Step-by-step plan."
-            )
-
-            task2 = Task(
-                description="Write python code based on plan AND execute it using 'Python Executor'. Return code and result.",
-                agent=coder,
-                expected_output="Code and execution result."
-            )
-
-            task3 = Task(
-                description="Review results and summarize.",
-                agent=reviewer,
-                expected_output="Final Report."
-            )
-
-            # --- الطاقم ---
-            crew = Crew(
-                agents=[planner, coder, reviewer],
-                tasks=[task1, task2, task3],
-                verbose=True,
-                process=Process.sequential
-            )
+            t1 = Task(description=f"Plan for: {mission}", agent=planner, expected_output="Plan")
+            t2 = Task(description="Write & Execute code based on plan.", agent=coder, expected_output="Code & Result")
+            t3 = Task(description="Review output.", agent=reviewer, expected_output="Summary")
 
             # --- التشغيل ---
+            crew = Crew(
+                agents=[planner, coder, reviewer],
+                tasks=[t1, t2, t3],
+                verbose=True
+            )
+
             result = crew.kickoff()
             
-            status_area.success("✅ تمت المهمة.")
-            st.markdown("### 📝 التقرير النهائي:")
+            status.success("✅ تم بنجاح.")
             st.markdown(f"<div class='result-box'>{result}</div>", unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"Error Details: {str(e)}")
-            st.info("تلميح: تأكد من أن requirements.txt يحتوي على: crewai[google-genai]")
+            st.error(f"Error: {str(e)}")
