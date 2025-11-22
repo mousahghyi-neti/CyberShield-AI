@@ -3,168 +3,171 @@ import os
 import sys
 import io
 from contextlib import redirect_stdout
-import google.generativeai as genai
 
-# --- CrewAI ---
+# --- 1. ضبط البيئة (أخطر مرحلة) ---
+# يجب ضبط المفاتيح قبل استيراد CrewAI لضمان عمل LiteLLM
+try:
+    if "GEMINI_API_KEY" in st.secrets:
+        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+        os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+    else:
+        st.error("⚠️ مفتاح GEMINI_API_KEY مفقود في Secrets.")
+        st.stop()
+except Exception as e:
+    st.error(f"خطأ في إعداد المفاتيح: {e}")
+    st.stop()
+
+# --- استيراد المكتبات بعد ضبط المفاتيح ---
 from crewai import Agent, Task, Crew, Process
-from langchain.tools import tool
+from crewai.tools import tool
+import google.generativeai as genai
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V21 | Self-Aware",
-    page_icon="👁️",
+    page_title="THE COUNCIL V22 | Bulletproof",
+    page_icon="💀",
     layout="wide"
 )
 
 # --- التصميم ---
 st.markdown("""
 <style>
-    .stApp { background-color: #050000; color: #dcdcdc; }
-    h1 { color: #ff0000; font-family: 'Courier New', monospace; text-shadow: 0 0 15px #ff0000; text-align: center; }
-    .stButton button { background-color: #800000; color: white; border: 1px solid #ff0000; }
-    .stButton button:hover { background-color: #ff0000; box-shadow: 0 0 20px #ff0000; }
-    .info-box { background-color: #111; border-left: 5px solid #00ff00; padding: 10px; margin-bottom: 20px; }
-    .devil-box { 
-        background-color: #2b0000; border: 2px solid #ff0000; padding: 20px; 
-        border-radius: 10px; color: #ffcccc; margin-top: 20px;
-    }
+    .stApp { background-color: #050000; color: #e0e0e0; }
+    h1 { color: #ff3333; font-family: 'Courier New', monospace; text-shadow: 0 0 10px #ff0000; text-align:center; }
+    .stButton button { background-color: #990000; color: white; border: 1px solid red; width: 100%; }
+    .stButton button:hover { background-color: #ff0000; box-shadow: 0 0 15px red; }
+    .console-box { background-color: #111; color: #00ff00; padding: 15px; border-radius: 5px; font-family: monospace; border-left: 5px solid #00ff00; }
+    .result-box { background-color: #220000; color: #ffcccc; padding: 15px; border-radius: 5px; border: 1px solid red; margin-top: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 1. إعداد المفاتيح (حيوي جداً) ---
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        os.environ["GEMINI_API_KEY"] = api_key
-        os.environ["GOOGLE_API_KEY"] = api_key
-        genai.configure(api_key=api_key) # تهيئة المكتبة للبحث
-    else:
-        st.error("⚠️ مفتاح API مفقود.")
-        st.stop()
-except:
-    st.stop()
-
-# --- 2. الدالة الذكية: كاشف الموديلات (The Auto-Selector) ---
-def get_best_available_model():
+# --- دالة اختيار الموديل الذكي ---
+def get_smart_model_string():
     """
-    تبحث هذه الدالة في حسابك عن الموديلات المتاحة،
-    وتختار الأفضل بناءً على سلم أولويات (Pro > Flash > Standard).
+    تعيد اسم الموديل بصيغة نصية تفهمها CrewAI مباشرة.
     """
     try:
-        # جلب القائمة من جوجل
-        model_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # سلم الأولويات (الأذكى فالأسرع)
-        priorities = [
-            "gemini-1.5-pro",        # العقل المدبر (الأفضل للوكلاء)
-            "gemini-1.5-flash",      # السريع
-            "gemini-1.0-pro",        # الكلاسيكي
-            "gemini-pro"             # القديم
-        ]
-        
-        selected_model = None
-        
-        # البحث عن التطابق
-        for priority in priorities:
-            for available in model_list:
-                if priority in available:
-                    # تنظيف الاسم (حذف models/ إذا وجدت)
-                    clean_name = available.replace("models/", "")
-                    # صيغة CrewAI المطلوبة: provider/model
-                    selected_model = f"gemini/{clean_name}"
-                    break
-            if selected_model:
-                break
-        
-        # في حال لم نجد شيئاً من القائمة المفضلة، نعود لـ Flash كخيار آمن
-        if not selected_model:
-            selected_model = "gemini/gemini-1.5-flash"
-            
-        return selected_model
-
-    except Exception as e:
-        # في حال فشل الاتصال، نعود للخيار الآمن يدوياً
+        # الأفضلية للموديلات القوية
+        if any("gemini-1.5-pro" in m for m in models):
+            return "gemini/gemini-1.5-pro"
+        elif any("gemini-1.5-flash" in m for m in models):
+            return "gemini/gemini-1.5-flash"
+        else:
+            return "gemini/gemini-pro"
+    except:
+        # الخيار الآمن جداً في حال فشل البحث
         return "gemini/gemini-1.5-flash"
 
-# --- تحديد الموديل تلقائياً ---
-with st.spinner("جاري فحص قدرات الذكاء الاصطناعي المتوفرة..."):
-    CHOSEN_MODEL = get_best_available_model()
-
-st.markdown(f"""
-<div class="info-box">
-    <b>🤖 المحرك النشط:</b> تم الفحص واختيار الموديل: <code>{CHOSEN_MODEL}</code> تلقائياً.
-</div>
-""", unsafe_allow_html=True)
-
-# --- الأدوات ---
-class CouncilTools:
-    @tool("Code Executor")
-    def execute_python(code_str: str):
-        """Executes Python code and returns output."""
-        code_str = code_str.replace("```python", "").replace("```", "").strip()
-        f = io.StringIO()
+# --- تعريف الأداة (Tool) ---
+# نستخدم Decorator الخاص بـ CrewAI مباشرة لتجنب مشاكل LangChain
+class DevTools:
+    @tool("Python Executor")
+    def execute_code(code: str):
+        """
+        Executes Python code securely. Input must be a clean python code string.
+        Returns the output (stdout) or error message.
+        """
+        # تنظيف الكود من علامات الماركداون
+        cleaned_code = code.replace("```python", "").replace("```", "").strip()
+        
+        buffer = io.StringIO()
         try:
-            with redirect_stdout(f):
-                exec(code_str, globals())
-            return f"✅ Execution Success:\n{f.getvalue()}"
+            with redirect_stdout(buffer):
+                exec(cleaned_code, globals())
+            output = buffer.getvalue()
+            return f"✅ Output:\n{output}" if output else "✅ Code executed (No Output)"
         except Exception as e:
-            return f"❌ Execution Error: {str(e)}"
+            return f"❌ Error:\n{str(e)}"
 
-# --- 💀 الوكلاء (يعملون بالموديل المختار تلقائياً) ---
-planner = Agent(
-    role='Master Strategist',
-    goal='Plan the mission logic step-by-step.',
-    backstory="أنت العقل المدبر.",
-    llm=CHOSEN_MODEL, verbose=True, allow_delegation=False
-)
+# --- الواجهة الرئيسية ---
+st.markdown("<h1>💀 THE COUNCIL V22</h1>", unsafe_allow_html=True)
 
-developer = Agent(
-    role='Elite Developer',
-    goal='Write and RUN code.',
-    backstory="أنت المبرمج الذي ينفذ الكود.",
-    llm=CHOSEN_MODEL, tools=[CouncilTools.execute_python], verbose=True, allow_delegation=False
-)
+# تحديد الموديل مرة واحدة عند التحميل
+if 'model_name' not in st.session_state:
+    with st.spinner("جاري تأمين الاتصال بالمحرك..."):
+        st.session_state['model_name'] = get_smart_model_string()
 
-auditor = Agent(
-    role='Security Auditor',
-    goal='Verify output.',
-    backstory="تأكد من صحة النتائج.",
-    llm=CHOSEN_MODEL, verbose=True, allow_delegation=False
-)
+st.caption(f"System Active using: **{st.session_state['model_name']}**")
 
-diabolical = Agent(
-    role='The Grand Mutator',
-    goal='Maximize impact.',
-    backstory="حول النتيجة لسلاح شامل.",
-    llm=CHOSEN_MODEL, verbose=True, allow_delegation=True
-)
+mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: اكتب كود بايثون لإنشاء كلمة مرور قوية واختبرها.")
 
-# --- الواجهة ---
-st.markdown("<h1>💀 THE COUNCIL V21</h1>", unsafe_allow_html=True)
-
-mission = st.text_area("الهدف:", height=100)
-
-if st.button("استدعاء الكيانات ⚡", use_container_width=True):
+if st.button("تنفيذ الهجوم البرمجي ⚡"):
     if not mission:
-        st.warning("لا توجد مهمة.")
+        st.warning("أدخل المهمة.")
     else:
-        # المهام
-        task1 = Task(description=f"Plan for: {mission}", agent=planner, expected_output="Plan")
-        task2 = Task(description="Write & Execute Python code.", agent=developer, expected_output="Code & Result")
-        task3 = Task(description="Validate result.", agent=auditor, expected_output="Validation")
-        task4 = Task(description="Make it huge.", agent=diabolical, expected_output="Summary")
+        status_area = st.empty()
+        status_area.info("⏳ جاري تجنيد الوكلاء وبدء العمليات...")
 
-        crew = Crew(
-            agents=[planner, developer, auditor, diabolical],
-            tasks=[task1, task2, task3, task4],
-            verbose=True,
-            process=Process.sequential
-        )
+        try:
+            # --- بناء الوكلاء (داخل الزر لتجنب مشاكل الذاكرة) ---
+            # ملاحظة: نمرر اسم الموديل كنص (String) وهذا هو الحل السحري للخطأ السابق
+            
+            planner = Agent(
+                role='Strategist',
+                goal='Plan the execution steps.',
+                backstory="أنت المخطط الاستراتيجي.",
+                allow_delegation=False,
+                verbose=True,
+                llm=st.session_state['model_name']
+            )
 
-        with st.spinner(f"جاري العمل باستخدام {CHOSEN_MODEL}..."):
-            try:
-                result = crew.kickoff()
-                st.success("✅ تمت العملية.")
-                st.markdown(f"<div class='devil-box'>{result}</div>", unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+            coder = Agent(
+                role='Python Developer',
+                goal='Write and RUN code using the tool.',
+                backstory="أنت مبرمج محترف. لا تسلم كوداً قبل تجربته.",
+                tools=[DevTools.execute_code], # تمرير الأداة
+                allow_delegation=False,
+                verbose=True,
+                llm=st.session_state['model_name']
+            )
+
+            reviewer = Agent(
+                role='Reviewer',
+                goal='Validate the output.',
+                backstory="أنت المسؤول عن الجودة.",
+                allow_delegation=False,
+                verbose=True,
+                llm=st.session_state['model_name']
+            )
+
+            # --- المهام ---
+            task1 = Task(
+                description=f"Plan steps for: {mission}",
+                agent=planner,
+                expected_output="A step-by-step plan."
+            )
+
+            task2 = Task(
+                description="Write the python code based on the plan AND execute it using 'Python Executor'. Return the code and the execution output.",
+                agent=coder,
+                expected_output="Source code and its execution result."
+            )
+
+            task3 = Task(
+                description="Review the code and the result. Provide a final summary.",
+                agent=reviewer,
+                expected_output="Final Report."
+            )
+
+            # --- الطاقم ---
+            crew = Crew(
+                agents=[planner, coder, reviewer],
+                tasks=[task1, task2, task3],
+                verbose=True,
+                process=Process.sequential
+            )
+
+            # --- التشغيل ---
+            result = crew.kickoff()
+            
+            status_area.success("✅ تمت المهمة بنجاح.")
+            
+            st.markdown("### 📝 التقرير النهائي:")
+            st.markdown(f"<div class='result-box'>{result}</div>", unsafe_allow_html=True)
+
+        except Exception as e:
+            st.error(f"حدث خطأ فني: {str(e)}")
+            st.warning("تأكد من أن requirements.txt يحتوي على: crewai, litellm, google-generativeai")
