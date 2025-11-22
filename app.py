@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V36 | The Critic",
+    page_title="THE COUNCIL V37 | Adaptive Hunter",
     page_icon="💀",
     layout="wide"
 )
@@ -23,7 +23,6 @@ st.markdown("""
     .fixer-box { border-left: 4px solid #00ffff; background: #001111; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
     .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; white-space: pre-wrap; }
     .error-box { background: #2a0000; padding: 10px; border: 1px solid #ff0000; color: #ffaaaa; font-size: 0.9em; }
-    .warning-box { background: #332b00; padding: 10px; border: 1px solid #ffcc00; color: #ffdd99; font-size: 0.9em; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -48,15 +47,13 @@ def get_available_models():
 with st.sidebar:
     st.header("⚙️ المحرك")
     models = get_available_models()
-    default_ix = 0
     if models:
-        for i, m in enumerate(models):
-            if "flash" in m: default_ix = i; break
+        default_ix = next((i for i, m in enumerate(models) if "flash" in m), 0)
         selected_model = st.selectbox("Model:", models, index=default_ix)
     else:
         selected_model = "models/gemini-1.5-flash"
     
-    st.info("💡 V36 Feature: **Semantic Validation**\nRejects empty results.")
+    st.info("💡 V37 Strategy: **Multi-Selector Scraping**\n(Table -> Div -> Text Pattern)")
 
 # --- كلاس الوكيل ---
 class NativeAgent:
@@ -65,12 +62,17 @@ class NativeAgent:
         self.role = role
         sys_instruction = f"""
         You are {name}, {role}.
+        
         RULES:
-        1. NO ASYNC. Use synchronous code only.
-        2. Use 'curl_cffi' for requests (impersonate="chrome110").
-        3. PRINT the data. If you don't print, it fails.
-        4. Try different HTML selectors if table/divs are not found (be adaptive).
-        5. Deps: # pip: curl_cffi beautifulsoup4
+        1. **USE curl_cffi**: `from curl_cffi import requests`. Use `impersonate="chrome110"`.
+        2. **NO ASYNC**: Synchronous code only.
+        3. **ADAPTIVE SCRAPING**: 
+           - Many sites DO NOT use `<table>`. 
+           - You MUST search for `<div>` structures with classes like 'row', 'sms-item', 'msg-item', 'list-item'.
+           - Look for text inside elements.
+        4. **ROBUSTNESS**: Handle 404/Connection errors gracefully (skip bad URLs).
+        5. **PRINT**: You MUST print the final found data.
+        6. **DEPS**: # pip: curl_cffi beautifulsoup4
         """
         self.model = genai.GenerativeModel(
             model_name=model_id,
@@ -102,7 +104,7 @@ def ensure_dependencies(code):
     all_libs = list(set(all_libs))
     
     if all_libs:
-        logs.append(f"📦 Checking deps: {', '.join(all_libs)}")
+        logs.append(f"📦 Deps check: {', '.join(all_libs)}")
         for lib in all_libs:
             try:
                 __import__(lib)
@@ -111,7 +113,7 @@ def ensure_dependencies(code):
                     subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", lib])
                     logs.append(f"✅ Installed: {lib}")
                 except:
-                    logs.append(f"❌ Failed install: {lib}")
+                    logs.append(f"❌ Failed: {lib}")
     return logs
 
 def run_code_safe(code):
@@ -123,29 +125,16 @@ def run_code_safe(code):
     except Exception as e:
         return False, str(e)
 
-# --- 🧠 المدقق النقدي (The Critical Validator) ---
+# --- المدقق الذكي ---
 def validate_output(output):
-    """
-    يفحص المخرجات بحثاً عن علامات الفشل "المنطقي" وليس التقني فقط.
-    """
-    # كلمات تدل على أن الكود اشتغل لكن لم يجد شيئاً
-    failure_keywords = [
-        "لا توجد بيانات", "no data found", "empty", "not found", 
-        "لم يتم العثور", "0 items", "no tables"
-    ]
-    
-    # إذا كانت المخرجات قصيرة جداً (أقل من 50 حرف)، غالباً فشل
-    if len(output.strip()) < 50:
-        return False, "Output is too short (likely empty)."
-    
-    lower_out = output.lower()
-    for kw in failure_keywords:
-        if kw in lower_out:
-            return False, f"Detected failure keyword: '{kw}'"
-            
+    # إذا كان المخرج يحتوي على رسائل فشل فقط
+    if "no unique sms" in output.lower() or "no data found" in output.lower():
+        return False, "Script ran but found ZERO data. Selector logic is likely wrong."
+    if not output.strip():
+        return False, "No output printed."
     return True, "Valid"
 
-# --- حلقة الخلية المطورة ---
+# --- حلقة الخلية ---
 def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
     current_code_text = initial_code_response
     max_retries = 4
@@ -160,38 +149,30 @@ def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
         if dep_logs: logs_ui.extend(dep_logs)
 
         success, output = run_code_safe(code)
-
-        # --- التحقق المزدوج (تقني + دلالي) ---
-        logic_success = False
+        
+        is_valid = False
         validation_msg = ""
-        
         if success:
-            logic_success, validation_msg = validate_output(output)
-        
-        # إذا نجح تقنياً ومنطقياً، نخرج
-        if success and logic_success:
+            is_valid, validation_msg = validate_output(output)
+
+        if success and is_valid:
             return f"✅ Success:\n{output}", logs_ui, current_code_text
-        
-        # إذا فشل (سواء كراش أو نتيجة فارغة)
         else:
-            error_details = output if not success else f"Logical Failure: {validation_msg}\nOutput was: {output}"
-            logs_ui.append(f"⚠️ Attempt {attempt+1} Rejected: {validation_msg}...")
+            error_details = output if not success else f"Logic Fail: {validation_msg}\nOutput:\n{output}"
+            logs_ui.append(f"⚠️ Attempt {attempt+1} Rejected. Adapting...")
             
             if attempt == max_retries:
                 return f"❌ Failed. Final Status:\n{error_details}", logs_ui, current_code_text
             
-            # طلب تعديل الاستراتيجية
             fix_prompt = f"""
-            The code ran but failed validation.
-            Issue: {validation_msg}
+            Execution Result:
+            "{error_details}"
             
-            Actual Output:
-            "{output}"
-            
+            The code failed to extract data or crashed.
             ADVICE:
-            - If 'No tables found', try finding 'div' elements with classes like 'row', 'message', 'list-item'.
-            - The site structure might not use <table> tags.
-            - Inspect the HTML soup logic.
+            1. If 'No data found', STOP looking for <table>. Look for <div> with classes: 'msg', 'sms', 'row', 'list-item', 'text-content'.
+            2. Some sites hide data in <script> tags or JSON. Try printing the raw HTML soup.find() to debug.
+            3. Use 'curl_cffi' impersonate='chrome110'.
             
             Fix the code and return ONLY the code block.
             """
@@ -201,42 +182,47 @@ def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
     return "Unknown", logs_ui, current_code_text
 
 # --- الواجهة ---
-st.markdown("<h1>💀 THE COUNCIL V36</h1>", unsafe_allow_html=True)
-st.caption(f"Validator: **Semantic (Logic Check)** | Engine: **{selected_model}**")
+st.markdown("<h1>💀 THE COUNCIL V37</h1>", unsafe_allow_html=True)
+st.caption(f"Objective: **Adaptive Extraction** | Engine: **{selected_model}**")
 
-mission = st.text_area("المهمة:", height=100, placeholder="مثال: استخرج الرسائل من الرابط...")
+# روابط اختبار حقيقية تعمل في 2025 (أو أقرب وقت ممكن)
+default_urls = """
+https://receive-smss.com/sms/447418340677/
+https://anonymsms.com/number/19137933987/
+""".strip()
 
-if st.button("بدء العملية ⚡"):
+mission = st.text_area("المهمة:", height=100, value=f"استخرج الرسائل (Sender, Message) من هذه الروابط:\n{default_urls}")
+
+if st.button("الصيد (Hunt) ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
         results = st.container()
         
-        planner = NativeAgent("Strategist", "Plan execution.", selected_model)
-        coder = NativeAgent("Developer", "Write python code.", selected_model)
-        # المصحح هنا تم تعزيزه ليكون خبيراً في استخراج البيانات
-        fixer = NativeAgent("The Fixer", "Fix scraping logic. Try different HTML selectors if one fails.", selected_model)
+        planner = NativeAgent("Strategist", "Plan extraction logic.", selected_model)
+        coder = NativeAgent("Developer", "Write robust scraper code.", selected_model)
+        fixer = NativeAgent("The Fixer", "Fix scraping logic. Switch selectors if needed.", selected_model)
         
         with results:
             with st.spinner("1. التخطيط..."):
                 plan = planner.ask(mission)
                 st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
             
-            with st.spinner("2. المحاولة الأولى..."):
-                initial_code = coder.ask("Write python code using curl_cffi. Print ALL extracted text.", context=plan)
+            with st.spinner("2. المبرمج (Code Generation)..."):
+                initial_code = coder.ask("Write python code using curl_cffi. Try BOTH table and div selectors. Print results.", context=plan)
             
-            with st.spinner("3. التحقق والتصحيح (The Critical Loop)..."):
+            with st.spinner("3. التحقق والتصحيح (The Loop)..."):
                 final_output, debug_logs, final_code = smart_execute_with_hive(initial_code, fixer, plan)
                 
                 if debug_logs:
                     log_html = "<br>".join([f"<code>{l}</code>" for l in debug_logs])
                     st.markdown(f"<div class='install-box'>{log_html}</div>", unsafe_allow_html=True)
                 
-                st.markdown(f"<div class='fixer-box'><div class='agent-name' style='color:#00ffff'>🔧 Final Code Used</div>{final_code}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='fixer-box'><div class='agent-name' style='color:#00ffff'>🔧 Final Code</div>{final_code}</div>", unsafe_allow_html=True)
                 
                 if "Success" in final_output:
                     clean_out = final_output.replace("✅ Success:\n", "")
-                    st.markdown(f"### 📊 النتائج المعتمدة:")
+                    st.markdown(f"### 📊 الغنيمة (The Loot):")
                     st.markdown(f"<div class='output-box'>{clean_out}</div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div class='error-box'>{final_output}</div>", unsafe_allow_html=True)
