@@ -5,19 +5,20 @@ import io
 import sys
 import subprocess
 import re
+import time
 from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
-st.set_page_config(page_title="THE COUNCIL V39 | Hunter", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="THE COUNCIL V40 | Mass Harvest", page_icon="🌾", layout="wide")
 
 # --- التصميم ---
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #e0e0e0; }
-    h1 { color: #00ffcc; font-family: monospace; text-align:center; text-shadow: 0 0 10px #00ffcc; }
+    h1 { color: #00ff00; font-family: monospace; text-align:center; text-shadow: 0 0 10px #00ff00; }
     .agent-box { border-left: 4px solid #d4af37; background: #111; padding: 15px; margin-bottom: 10px; }
-    .nav-box { border-left: 4px solid #ff00ff; background: #1a001a; padding: 15px; margin-bottom: 10px; }
-    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; white-space: pre-wrap; }
+    .harvest-box { border-left: 4px solid #00ff00; background: #001a00; padding: 15px; margin-bottom: 10px; }
+    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; white-space: pre-wrap; height: 400px; overflow-y: scroll; }
     .error-box { background: #2a0000; padding: 10px; border: 1px solid #ff0000; color: #ffaaaa; }
 </style>
 """, unsafe_allow_html=True)
@@ -42,7 +43,7 @@ with st.sidebar:
     models = get_available_models()
     default_ix = next((i for i, m in enumerate(models) if "flash" in m), 0) if models else 0
     selected_model = st.selectbox("Model:", models if models else ["models/gemini-1.5-flash"], index=default_ix)
-    st.info("💡 V39 Strategy: **Regex Navigation**\nSearches for '/sms/' pattern.")
+    st.info("💡 V40 Strategy: **Mass Scraping (Limit 30)**\nLoops through links with delay.")
 
 # --- الوكيل ---
 class NativeAgent:
@@ -53,17 +54,18 @@ class NativeAgent:
         You are {name}, {role}.
         RULES:
         1. **USE curl_cffi**: `from curl_cffi import requests`. Impersonate "chrome110".
-        2. **NAVIGATION LOGIC**: 
-           - Go to 'https://receive-smss.com/'.
-           - Find ALL links (`<a>`).
-           - Select the FIRST link where `href` contains `/sms/`.
-           - IGNORE link text (it might be just a number).
-        3. **EXTRACTION LOGIC**:
-           - Go to that number link.
-           - Find `<div>` with class `sms-item`, `msg-item`, or `row`.
-           - Extract Sender and Message text.
-        4. **PRINT**: Print "Found Target: [URL]" then the messages.
-        5. **DEPS**: # pip: curl_cffi beautifulsoup4
+        2. **MASS SCAN**: 
+           - Go to homepage.
+           - Find ALL links with `/sms/` or similar pattern.
+           - Deduplicate list.
+           - Take the FIRST 30 links.
+        3. **THE LOOP**:
+           - Loop through the 30 links.
+           - **CRITICAL**: Put `time.sleep(1.5)` inside the loop to be polite.
+           - Extract messages from each.
+        4. **PRINT**: Print "Scraping [x/30]: URL..." for progress. Print FINAL accumulated data.
+        5. **NO ASYNC**: Sync code only.
+        6. **DEPS**: # pip: curl_cffi beautifulsoup4
         """
         self.model = genai.GenerativeModel(model_name=model_id, system_instruction=sys_instruction)
 
@@ -105,8 +107,11 @@ def run_code_safe(code):
     except Exception as e: return False, str(e)
 
 def validate_output(output):
-    if "http error" in output.lower() or "404" in output.lower(): return False, "404/HTTP Error."
-    if "no messages" in output.lower() and "target found" not in output.lower(): return False, "Navigation failed."
+    # التحقق من أن الكود وجد روابط وحاول الدخول إليها
+    if "scanning" not in output.lower() and "scraping" not in output.lower(): 
+        return False, "Loop logic didn't start."
+    if "0 messages found" in output.lower() and "total" not in output.lower():
+        return False, "Scraped pages but found NOTHING."
     return True, "Valid"
 
 # --- الحلقة الذكية ---
@@ -123,6 +128,9 @@ def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
         dep_logs = ensure_dependencies(code)
         if dep_logs: logs_ui.extend(dep_logs)
 
+        # تحذير للمستخدم لأن العملية ستطول
+        st.toast(f"جاري تنفيذ المحاولة {attempt+1}... قد تستغرق دقيقة (30 صفحة).")
+        
         success, output = run_code_safe(code)
         is_valid, validation_msg = False, ""
         
@@ -131,21 +139,24 @@ def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
         if success and is_valid:
             return f"✅ Success:\n{output}", logs_ui, current_code_text
         else:
-            error_details = output if not success else f"Logic Fail: {validation_msg}\nOutput:\n{output}"
-            logs_ui.append(f"⚠️ Attempt {attempt+1} Failed: {validation_msg}...")
+            error_details = output if not success else f"Logic Fail: {validation_msg}\nOutput Sample:\n{output[:500]}..."
+            logs_ui.append(f"⚠️ Attempt {attempt+1} Failed. Retrying...")
             
             if attempt == max_retries: return f"❌ Failed:\n{error_details}", logs_ui, current_code_text
             
             fix_prompt = f"""
-            Execution failed. Output: "{error_details}"
+            Execution failed or found nothing.
+            Output: "{error_details}"
             
-            FIX STRATEGY:
-            1. The selector was wrong.
-            2. Search for ANY link containing '/sms/' in href.
-            3. Print the full HTML of the homepage if you can't find links, to debug.
-            4. Use 'curl_cffi'.
-            
-            Return ONLY the corrected code.
+            FIX PLAN:
+            1. Go to 'https://receive-smss.com/'.
+            2. Find ALL hrefs containing '/sms/'.
+            3. Limit list to 30 unique links.
+            4. Loop through them using `for link in links:`.
+            5. Add `import time` and `time.sleep(1)` in the loop.
+            6. Scrape messages.
+            7. Print stats: "Found X messages in [URL]".
+            8. Use 'curl_cffi'.
             """
             current_code_text = fixer_agent.ask(fix_prompt, context=context_plan)
             attempt += 1
@@ -153,38 +164,38 @@ def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
     return "Unknown", logs_ui, current_code_text
 
 # --- الواجهة ---
-st.markdown("<h1>🎯 THE COUNCIL V39</h1>", unsafe_allow_html=True)
-st.caption(f"Strategy: **Broad Pattern Matching** | Engine: **{selected_model}**")
+st.markdown("<h1>🌾 THE COUNCIL V40</h1>", unsafe_allow_html=True)
+st.caption(f"Strategy: **Mass Harvesting (30 Nodes)** | Engine: **{selected_model}**")
 
-st.info("سيقوم النظام بالبحث عن أي رابط يحتوي على '/sms/' ويدخل إليه.")
+st.warning("⚠️ تنبيه: البحث في 30 صفحة قد يستغرق حوالي 30-60 ثانية. كن صبوراً.")
 
-if st.button("إطلاق الصياد (Hunt) ⚡"):
+if st.button("بدء الحصاد (Start Harvest) ⚡"):
     results = st.container()
     
-    planner = NativeAgent("Navigator", "Plan broad scraping.", selected_model)
-    coder = NativeAgent("Developer", "Write scraping code.", selected_model)
-    fixer = NativeAgent("The Fixer", "Fix navigation logic.", selected_model)
+    planner = NativeAgent("Navigator", "Plan mass scraping logic.", selected_model)
+    coder = NativeAgent("Developer", "Write loop scraping code.", selected_model)
+    fixer = NativeAgent("The Fixer", "Fix loop/scraping errors.", selected_model)
     
     with results:
-        with st.spinner("1. التخطيط..."):
-            plan = planner.ask("Goal: Go to https://receive-smss.com/, find ANY link with '/sms/' in href, go there, and scrape messages.")
-            st.markdown(f"<div class='nav-box'><div class='agent-name' style='color:#ff00ff'>🧭 Navigator</div>{plan}</div>", unsafe_allow_html=True)
+        with st.spinner("1. رسم خطة الهجوم الواسع..."):
+            plan = planner.ask("Goal: Scrape 30 different active numbers from 'https://receive-smss.com/' and collect all SMS messages. Use a loop and delays.")
+            st.markdown(f"<div class='harvest-box'><div class='agent-name' style='color:#00ff00'>🧭 Navigator</div>{plan}</div>", unsafe_allow_html=True)
         
-        with st.spinner("2. تشغيل الكود..."):
-            initial_code = coder.ask("Write code to: 1. Get homepage using curl_cffi. 2. Find link with '/sms/'. 3. Scrape messages. Print output.", context=plan)
+        with st.spinner("2. كتابة كود الحصاد..."):
+            initial_code = coder.ask("Write python code using curl_cffi. 1. Get homepage. 2. Find all /sms/ links. 3. Loop first 30. 4. Scrape & Print.", context=plan)
             final_output, debug_logs, final_code = smart_execute_with_hive(initial_code, fixer, plan)
             
             if debug_logs:
                 log_html = "<br>".join([f"<code>{l}</code>" for l in debug_logs])
                 st.markdown(f"<div class='install-box'>{log_html}</div>", unsafe_allow_html=True)
             
-            st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Developer (Live Code)</div>{final_code}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Live Code</div>{final_code}</div>", unsafe_allow_html=True)
             
             if "Success" in final_output:
                 clean_out = final_output.replace("✅ Success:\n", "")
-                st.markdown(f"### 🎯 النتائج:")
+                st.markdown(f"### 💰 الغلة الكاملة (The Harvest):")
                 st.markdown(f"<div class='output-box'>{clean_out}</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"<div class='error-box'>{final_output}</div>", unsafe_allow_html=True)
     
-    st.success("✅ تمت المهمة.")
+    st.success("✅ العملية انتهت.")
