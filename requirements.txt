@@ -1,3 +1,4 @@
 streamlit
+crewai
+langchain_google_genai
 google-generativeai
-duckduckgo-search
