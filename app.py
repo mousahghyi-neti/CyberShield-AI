@@ -9,12 +9,12 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V30 | Perfected",
+    page_title="THE COUNCIL V30.1 | Stable",
     page_icon="💀",
     layout="wide"
 )
 
-# --- التصميم (Dark & Gold) ---
+# --- التصميم ---
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #e0e0e0; }
@@ -54,7 +54,7 @@ with st.sidebar:
         st.warning("لم يتم العثور على موديلات، جاري استخدام الافتراضي.")
         selected_model = "models/gemini-1.5-flash"
     else:
-        # نختار الفلاش كخيار افتراضي إذا وجد
+        # محاولة اختيار الفلاش أو البرو تلقائياً
         default_ix = 0
         for i, m in enumerate(available_models):
             if "flash" in m:
@@ -63,25 +63,19 @@ with st.sidebar:
         selected_model = st.selectbox("اختر الموديل:", available_models, index=default_ix)
     
     st.divider()
-    st.info("💡 V30 Features:\n- Self-Healing Loop\n- Multi-Line Pip Install\n- Native Google Core")
+    st.info("💡 System Status: Online")
 
 # --- 3. كلاس الوكيل (Native Agent) ---
 class NativeAgent:
     def __init__(self, name, role, model_id):
         self.name = name
         self.role = role
-        # تعليمات صارمة للمكتبات
         sys_instruction = f"""
         You are {name}, {role}.
-        
         CODING RULES:
         1. Use python blocks: ```python ... ```
-        2. DEPENDENCIES: If you need external libraries (requests, bs4, pandas, etc.), 
-           you MUST declare them at the top of the code using comments like this:
-           # pip: requests
-           # pip: beautifulsoup4
-           
-        3. ERROR FIXING: If asked to fix code, return ONLY the full corrected code block.
+        2. DEPENDENCIES: If you need external libraries, declare them at the top: # pip: libname
+        3. ERROR FIXING: If asked to fix code, return ONLY the corrected code block.
         """
         self.model = genai.GenerativeModel(
             model_name=model_id,
@@ -99,43 +93,32 @@ class NativeAgent:
 # --- 4. دوال المعالجة الأساسية ---
 
 def extract_code(text):
-    """استخراج الكود من بين علامات الماركداون"""
     match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
     if not match:
         match = re.search(r"```\n(.*?)```", text, re.DOTALL)
     return match.group(1) if match else None
 
 def ensure_dependencies(code):
-    """
-    (V30) النسخة المثالية: تلتقط كل المكتبات من كل الأسطر
-    """
     logs = []
-    # البحث عن كل الأسطر التي تحتوي على # pip:
     matches = re.findall(r"#\s*pip:\s*([^\n\r]*)", code)
-    
     all_libs = []
     for match in matches:
-        # تنظيف الفواصل والتعليقات الجانبية
         clean_match = match.split("#")[0]
         libs = [lib.strip() for lib in clean_match.split(",") if lib.strip()]
         all_libs.extend(libs)
     
-    # إزالة التكرار
     all_libs = list(set(all_libs))
     
     if all_libs:
         logs.append(f"📦 Requirements found: {', '.join(all_libs)}")
         for lib in all_libs:
             try:
-                # محاولة استيراد سريعة
                 __import__(lib)
             except ImportError:
                 try:
-                    # التثبيت الفعلي
                     subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
                     logs.append(f"✅ Installed: {lib}")
                 except Exception as e:
-                    # محاولة أخيرة (force install) لأسماء مثل bs4
                     try:
                         subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
                         logs.append(f"✅ Installed (Force): {lib}")
@@ -144,7 +127,6 @@ def ensure_dependencies(code):
     return logs
 
 def run_code_safe(code):
-    """تشغيل الكود والتقاط المخرجات أو الأخطاء"""
     buffer = io.StringIO()
     try:
         with redirect_stdout(buffer):
@@ -153,7 +135,7 @@ def run_code_safe(code):
     except Exception as e:
         return False, str(e)
 
-# --- 5. حلقة التصحيح الذاتي (The Loop) ---
+# --- 5. حلقة التصحيح الذاتي ---
 def smart_execute_with_retry(initial_code_response, agent, context_plan):
     current_code_text = initial_code_response
     max_retries = 3
@@ -161,17 +143,14 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
     logs_ui = []
 
     while attempt <= max_retries:
-        # 1. استخراج
         code = extract_code(current_code_text)
         if not code:
             return "⚠️ No code found.", logs_ui, current_code_text
 
-        # 2. تثبيت
         dep_logs = ensure_dependencies(code)
         if dep_logs:
             logs_ui.extend(dep_logs)
 
-        # 3. تشغيل
         success, output = run_code_safe(code)
 
         if success:
@@ -183,12 +162,10 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
             if attempt == max_retries:
                 return f"❌ Failed after retries. Error:\n{error_msg}", logs_ui, current_code_text
             
-            # طلب الإصلاح من الوكيل
             fix_prompt = f"""
             Your code failed with this error:
             {error_msg}
-            
-            Fix the code. Ensure you declare dependencies like '# pip: libname'.
+            Fix the code. Ensure dependencies like '# pip: libname'.
             Return only the full corrected code block.
             """
             current_code_text = agent.ask(fix_prompt, context=context_plan)
@@ -197,7 +174,50 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
     return "Unknown Error", logs_ui, current_code_text
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V30</h1>", unsafe_allow_html=True)
+st.markdown("<h1>💀 THE COUNCIL V30.1</h1>", unsafe_allow_html=True)
 st.caption(f"Mode: **Perfected Autonomous Loop** | Engine: **{selected_model}**")
 
-mission = st.text_
+# --- هنا كان الخطأ في الصورة السابقة، تم تصحيحه ---
+mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخدم مكتبة yfinance لجلب سعر سهم Google ورسمه.")
+
+if st.button("تنفيذ الهجوم ⚡"):
+    if not mission:
+        st.warning("أدخل المهمة.")
+    else:
+        results = st.container()
+        
+        planner = NativeAgent("Strategist", "Create logical execution plans.", selected_model)
+        coder = NativeAgent("Developer", "Write robust python code with dependency handling.", selected_model)
+        auditor = NativeAgent("Auditor", "Analyze code results.", selected_model)
+
+        with results:
+            # 1. التخطيط
+            with st.spinner("1. التخطيط الاستراتيجي..."):
+                plan = planner.ask(mission)
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
+            
+            # 2. الكود الأولي
+            with st.spinner("2. صياغة الكود الأولي..."):
+                initial_code = coder.ask("Write python code for this plan. Don't forget '# pip: lib' if needed.", context=plan)
+            
+            # 3. الحلقة الذكية
+            with st.spinner("3. المعالجة، التثبيت، والتصحيح الذاتي..."):
+                final_output, debug_logs, final_code = smart_execute_with_retry(initial_code, coder, plan)
+                
+                if debug_logs:
+                    log_html = "<br>".join([f"<code>{l}</code>" for l in debug_logs])
+                    st.markdown(f"<div class='install-box'>{log_html}</div>", unsafe_allow_html=True)
+                
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Developer (Final Code)</div>{final_code}</div>", unsafe_allow_html=True)
+                
+                if "Success" in final_output:
+                    st.markdown(f"<div class='output-box'>{final_output}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div class='error-box'>{final_output}</div>", unsafe_allow_html=True)
+
+            # 4. التدقيق
+            with st.spinner("4. المصادقة النهائية..."):
+                report = auditor.ask("Audit this execution result.", context=f"{plan}\n{final_output}")
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>🛡️ Auditor</div>{report}</div>", unsafe_allow_html=True)
+                
+        st.success("✅ تمت المهمة.")
