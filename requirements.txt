@@ -1,5 +1,6 @@
 streamlit
 crewai
+litellm
 langchain
 langchain-community
 langchain-core
