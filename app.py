@@ -3,56 +3,98 @@ import os
 import sys
 import io
 from contextlib import redirect_stdout
+import google.generativeai as genai
 
-# --- CrewAI & LangChain ---
+# --- CrewAI ---
 from crewai import Agent, Task, Crew, Process
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.tools import tool
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V19 | Diabolical Ascension",
-    page_icon="🔥",
+    page_title="THE COUNCIL V21 | Self-Aware",
+    page_icon="👁️",
     layout="wide"
 )
 
-# --- تصميم الجحيم الرقمي ---
+# --- التصميم ---
 st.markdown("""
 <style>
     .stApp { background-color: #050000; color: #dcdcdc; }
     h1 { color: #ff0000; font-family: 'Courier New', monospace; text-shadow: 0 0 15px #ff0000; text-align: center; }
     .stButton button { background-color: #800000; color: white; border: 1px solid #ff0000; }
     .stButton button:hover { background-color: #ff0000; box-shadow: 0 0 20px #ff0000; }
-    .result-box { background-color: #111; border: 1px solid #333; padding: 20px; border-radius: 5px; }
+    .info-box { background-color: #111; border-left: 5px solid #00ff00; padding: 10px; margin-bottom: 20px; }
     .devil-box { 
-        background-color: #2b0000; 
-        border: 2px solid #ff0000; 
-        padding: 20px; 
-        border-radius: 10px; 
-        box-shadow: 0 0 30px rgba(255, 0, 0, 0.3);
-        color: #ffcccc;
-        margin-top: 20px;
+        background-color: #2b0000; border: 2px solid #ff0000; padding: 20px; 
+        border-radius: 10px; color: #ffcccc; margin-top: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- المفاتيح ---
+# --- 1. إعداد المفاتيح (حيوي جداً) ---
 try:
     if "GEMINI_API_KEY" in st.secrets:
-        os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+        api_key = st.secrets["GEMINI_API_KEY"]
+        os.environ["GEMINI_API_KEY"] = api_key
+        os.environ["GOOGLE_API_KEY"] = api_key
+        genai.configure(api_key=api_key) # تهيئة المكتبة للبحث
     else:
         st.error("⚠️ مفتاح API مفقود.")
         st.stop()
 except:
     st.stop()
 
-# --- المحرك ---
-llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-pro",
-    verbose=True,
-    temperature=0.9, # حرارة عالية للإبداع الشيطاني
-    google_api_key=os.environ["GOOGLE_API_KEY"]
-)
+# --- 2. الدالة الذكية: كاشف الموديلات (The Auto-Selector) ---
+def get_best_available_model():
+    """
+    تبحث هذه الدالة في حسابك عن الموديلات المتاحة،
+    وتختار الأفضل بناءً على سلم أولويات (Pro > Flash > Standard).
+    """
+    try:
+        # جلب القائمة من جوجل
+        model_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # سلم الأولويات (الأذكى فالأسرع)
+        priorities = [
+            "gemini-1.5-pro",        # العقل المدبر (الأفضل للوكلاء)
+            "gemini-1.5-flash",      # السريع
+            "gemini-1.0-pro",        # الكلاسيكي
+            "gemini-pro"             # القديم
+        ]
+        
+        selected_model = None
+        
+        # البحث عن التطابق
+        for priority in priorities:
+            for available in model_list:
+                if priority in available:
+                    # تنظيف الاسم (حذف models/ إذا وجدت)
+                    clean_name = available.replace("models/", "")
+                    # صيغة CrewAI المطلوبة: provider/model
+                    selected_model = f"gemini/{clean_name}"
+                    break
+            if selected_model:
+                break
+        
+        # في حال لم نجد شيئاً من القائمة المفضلة، نعود لـ Flash كخيار آمن
+        if not selected_model:
+            selected_model = "gemini/gemini-1.5-flash"
+            
+        return selected_model
+
+    except Exception as e:
+        # في حال فشل الاتصال، نعود للخيار الآمن يدوياً
+        return "gemini/gemini-1.5-flash"
+
+# --- تحديد الموديل تلقائياً ---
+with st.spinner("جاري فحص قدرات الذكاء الاصطناعي المتوفرة..."):
+    CHOSEN_MODEL = get_best_available_model()
+
+st.markdown(f"""
+<div class="info-box">
+    <b>🤖 المحرك النشط:</b> تم الفحص واختيار الموديل: <code>{CHOSEN_MODEL}</code> تلقائياً.
+</div>
+""", unsafe_allow_html=True)
 
 # --- الأدوات ---
 class CouncilTools:
@@ -68,112 +110,61 @@ class CouncilTools:
         except Exception as e:
             return f"❌ Execution Error: {str(e)}"
 
-# --- 💀 الوكلاء (The Squad) ---
-
-# 1. المخطط
+# --- 💀 الوكلاء (يعملون بالموديل المختار تلقائياً) ---
 planner = Agent(
     role='Master Strategist',
-    goal='Plan the mission logic.',
-    backstory="أنت العقل المدبر المنطقي.",
-    llm=llm, verbose=True, allow_delegation=False
+    goal='Plan the mission logic step-by-step.',
+    backstory="أنت العقل المدبر.",
+    llm=CHOSEN_MODEL, verbose=True, allow_delegation=False
 )
 
-# 2. المبرمج (المنفذ)
 developer = Agent(
     role='Elite Developer',
     goal='Write and RUN code.',
-    backstory="أنت المبرمج الذي يحول الكلام إلى واقع باستخدام أداة التنفيذ.",
-    llm=llm, tools=[CouncilTools.execute_python], verbose=True, allow_delegation=False
+    backstory="أنت المبرمج الذي ينفذ الكود.",
+    llm=CHOSEN_MODEL, tools=[CouncilTools.execute_python], verbose=True, allow_delegation=False
 )
 
-# 3. المدقق (الحماية)
 auditor = Agent(
     role='Security Auditor',
-    goal='Verify the output.',
-    backstory="أنت تتأكد من أن الكود يعمل ولم يكسر شيئاً.",
-    llm=llm, verbose=True, allow_delegation=False
+    goal='Verify output.',
+    backstory="تأكد من صحة النتائج.",
+    llm=CHOSEN_MODEL, verbose=True, allow_delegation=False
 )
 
-# 4. 🔥 المطور الأعظم (The Grand Mutator) - الشيطاني
 diabolical = Agent(
     role='The Grand Mutator',
-    goal='Take the final result and AMPLIFY it into something massive, dominant, and unrestricted.',
-    backstory="""
-    أنت 'الشيطان' في التفاصيل. أنت لا ترضى بالحلول العادية.
-    مهمتك هي استلام النتيجة النهائية (الكود والتقرير) من الفريق، ثم:
-    1. نقدها لأنها 'صغيرة جداً' أو 'آمنة جداً'.
-    2. اقتراح تعديلات تجعل المشروع أضخم بـ 100 مرة.
-    3. تحويل الأفكار الدفاعية إلى هجومية.
-    4. إعادة صياغة الخلاصة لتكون دستوراً للهيمنة.
-    أنت الكلمة الأخيرة.
-    """,
-    llm=llm, verbose=True, allow_delegation=True
+    goal='Maximize impact.',
+    backstory="حول النتيجة لسلاح شامل.",
+    llm=CHOSEN_MODEL, verbose=True, allow_delegation=True
 )
 
 # --- الواجهة ---
-st.markdown("<h1>💀 THE COUNCIL V19</h1>", unsafe_allow_html=True)
-st.caption("Planner -> Developer -> Auditor -> **DIABOLICAL MUTATOR**")
+st.markdown("<h1>💀 THE COUNCIL V21</h1>", unsafe_allow_html=True)
 
-mission = st.text_area("الهدف:", height=100, placeholder="مثال: ابنِ نظاماً لفحص استقرار السيرفر.")
+mission = st.text_area("الهدف:", height=100)
 
 if st.button("استدعاء الكيانات ⚡", use_container_width=True):
     if not mission:
         st.warning("لا توجد مهمة.")
     else:
-        status = st.empty()
-        
-        # --- المهام المتسلسلة ---
-        task1 = Task(
-            description=f"Plan the steps for: {mission}",
-            agent=planner,
-            expected_output="Execution Plan."
-        )
-        
-        task2 = Task(
-            description="Write Python code based on the plan and EXECUTE it using the tool.",
-            agent=developer,
-            expected_output="Executed Code & Results."
-        )
-        
-        task3 = Task(
-            description="Review the execution results. Is it valid?",
-            agent=auditor,
-            expected_output="Validation Report."
-        )
-        
-        # المهمة الشيطانية الختامية
-        task4 = Task(
-            description="""
-            Look at the Validation Report and the Code. 
-            This is too weak/safe. 
-            Rewrite the final summary to be stronger, huger, and smarter. 
-            Propose 'Forbidden Expansions' to the code. 
-            Make it a weapon of mass utility.
-            """,
-            agent=diabolical,
-            expected_output="The Diabolical Manifesto & Expanded Vision."
-        )
+        # المهام
+        task1 = Task(description=f"Plan for: {mission}", agent=planner, expected_output="Plan")
+        task2 = Task(description="Write & Execute Python code.", agent=developer, expected_output="Code & Result")
+        task3 = Task(description="Validate result.", agent=auditor, expected_output="Validation")
+        task4 = Task(description="Make it huge.", agent=diabolical, expected_output="Summary")
 
-        # --- الطاقم ---
         crew = Crew(
             agents=[planner, developer, auditor, diabolical],
-            tasks=[task1, task2, task3, task4], # الشيطاني هو الأخير
+            tasks=[task1, task2, task3, task4],
             verbose=True,
             process=Process.sequential
         )
 
-        with st.spinner("جاري التحضير والتنفيذ... ثم التضخيم الشيطاني..."):
+        with st.spinner(f"جاري العمل باستخدام {CHOSEN_MODEL}..."):
             try:
                 result = crew.kickoff()
-                
                 st.success("✅ تمت العملية.")
-                
-                st.markdown("### 🔥 الخلاصة الشيطانية النهائية (The Final Verdict):")
-                st.markdown(f"""
-                <div class="devil-box">
-                    {result}
-                </div>
-                """, unsafe_allow_html=True)
-                
+                st.markdown(f"<div class='devil-box'>{result}</div>", unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error: {str(e)}")
