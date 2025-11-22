@@ -1,128 +1,121 @@
 import streamlit as st
+import google.generativeai as genai
 import os
-import sys
 import io
+import sys
 from contextlib import redirect_stdout
-
-# --- 1. استيراد المكتبة المنقذة ---
-# نستخدم LangChain كـ وسيط موثوق لأنه يعالج مشاكل الـ API Version تلقائياً
-from langchain_google_genai import ChatGoogleGenerativeAI
-from crewai import Agent, Task, Crew, Process
-from crewai.tools import tool
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V25 | LangChain Bypass",
+    page_title="THE COUNCIL V26 | Native Core",
     page_icon="💀",
     layout="wide"
 )
-
-# --- المفاتيح ---
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-    else:
-        st.error("⚠️ مفتاح API مفقود.")
-        st.stop()
-except:
-    st.stop()
 
 # --- التصميم ---
 st.markdown("""
 <style>
     .stApp { background-color: #000000; color: #e0e0e0; }
     h1 { color: #ff0000; font-family: 'Courier New', monospace; text-align:center; }
-    .stButton button { background-color: #800000; color: white; border: 1px solid red; width: 100%; }
-    .result-box { background-color: #1a1a1a; border: 1px solid #333; padding: 15px; border-radius: 5px; margin-top: 20px; }
+    .agent-box { border-left: 4px solid #d4af37; background: #111; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+    .agent-name { color: #d4af37; font-weight: bold; font-size: 1.1em; }
+    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #333; font-family: monospace; color: #00ff00; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. تعريف المحرك (The Engine) ---
-# هنا الحل: ننشئ الكائن يدوياً ونحدد الموديل "gemini-1.5-flash" بدون أي بادئات
+# --- المفاتيح ---
 try:
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        verbose=True,
-        temperature=0.5,
-        google_api_key=os.environ["GOOGLE_API_KEY"]
-    )
-except Exception as e:
-    st.error(f"فشل تهيئة المحرك: {e}")
+    if "GEMINI_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    else:
+        st.error("⚠️ مفتاح API مفقود.")
+        st.stop()
+except:
     st.stop()
 
-# --- الأداة ---
-class DevTools:
-    @tool("Python Executor")
-    def execute_code(code: str):
-        """Executes Python code securely."""
-        cleaned_code = code.replace("```python", "").replace("```", "").strip()
-        buffer = io.StringIO()
+# --- المحرك الخاص بنا (Our Custom Agent Class) ---
+class NativeAgent:
+    def __init__(self, name, role, model_name="gemini-1.5-flash"):
+        self.name = name
+        self.role = role
+        self.model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=f"You are {name}, {role}. Be precise and professional."
+        )
+
+    def ask(self, prompt, context=""):
+        # دمج السياق السابق مع الطلب الجديد
+        full_prompt = f"CONTEXT:\n{context}\n\nYOUR TASK:\n{prompt}"
         try:
-            with redirect_stdout(buffer):
-                exec(cleaned_code, globals())
-            output = buffer.getvalue()
-            return f"✅ Output:\n{output}" if output else "✅ Executed (No Output)"
+            response = self.model.generate_content(full_prompt)
+            return response.text
         except Exception as e:
-            return f"❌ Error:\n{str(e)}"
+            return f"Error: {str(e)}"
+
+# --- أداة تنفيذ الكود (Manual Tool) ---
+def execute_python_code(text):
+    """
+    يستخرج كود بايثون من النص وينفذه.
+    """
+    # استخراج الكود بين علامات ```python و ```
+    import re
+    code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
+    if not code_match:
+        code_match = re.search(r"```\n(.*?)```", text, re.DOTALL)
+    
+    if not code_match:
+        return "⚠️ No executable code found in the response."
+    
+    code = code_match.group(1)
+    
+    buffer = io.StringIO()
+    try:
+        with redirect_stdout(buffer):
+            exec(code, globals())
+        return f"✅ Execution Output:\n{buffer.getvalue()}"
+    except Exception as e:
+        return f"❌ Execution Error:\n{str(e)}"
 
 # --- الواجهة ---
-st.markdown("<h1>💀 THE COUNCIL V25</h1>", unsafe_allow_html=True)
-st.caption("Architecture: **LangChain Direct Wrapper** (Bypassing CrewAI String Parsing)")
+st.markdown("<h1>💀 THE COUNCIL V26 (Native)</h1>", unsafe_allow_html=True)
+st.caption("Architecture: **Zero-Dependency Logic** (No CrewAI, No LangChain)")
 
-mission = st.text_area("أدخل المهمة:", height=100, placeholder="مثال: اكتب كود بايثون لطباعة الوقت الحالي.")
+mission = st.text_area("أدخل المهمة:", height=100, placeholder="مثال: اكتب كود بايثون لحساب مضروب الرقم 10.")
 
-if st.button("تشغيل النظام ⚡"):
+if st.button("تنفيذ الهجوم ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
-        status = st.empty()
-        status.info("⏳ الاتصال المباشر بالموديل...")
+        # حاوية النتائج
+        results_container = st.container()
+        
+        # 1. تعريف الوكلاء (يدوياً)
+        planner = NativeAgent("The Strategist", "Expert planner. Break down tasks into steps.")
+        coder = NativeAgent("The Developer", "Python expert. Write clean code inside ```python blocks.")
+        auditor = NativeAgent("The Auditor", "Security expert. Analyze results.")
 
-        try:
-            # --- الوكلاء ---
-            # نمرر المتغير llm (الكائن) وليس النص
+        with results_container:
+            # --- الخطوة 1: التخطيط ---
+            with st.spinner("1. المخطط يضع الاستراتيجية..."):
+                plan = planner.ask(mission)
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
             
-            planner = Agent(
-                role='Strategist',
-                goal='Plan steps.',
-                backstory="Meticulous planner.",
-                allow_delegation=False,
-                llm=llm 
-            )
+            # --- الخطوة 2: البرمجة ---
+            with st.spinner("2. المبرمج يكتب الكود..."):
+                # نمرر خطة المخطط للمبرمج
+                code_response = coder.ask(f"Write python code to solve this based on the plan.", context=plan)
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Developer</div>{code_response}</div>", unsafe_allow_html=True)
 
-            coder = Agent(
-                role='Developer',
-                goal='Code and Execute.',
-                backstory="Expert coder with execution tools.",
-                tools=[DevTools.execute_code],
-                allow_delegation=False,
-                llm=llm
-            )
+            # --- الخطوة 3: التنفيذ الفعلي (الأداة) ---
+            with st.spinner("3. تشغيل الكود في النظام..."):
+                execution_result = execute_python_code(code_response)
+                st.markdown(f"<div class='output-box'>{execution_result}</div>", unsafe_allow_html=True)
 
-            reviewer = Agent(
-                role='Auditor',
-                goal='Validate.',
-                backstory="Quality assurance.",
-                allow_delegation=False,
-                llm=llm
-            )
-
-            # --- المهام ---
-            t1 = Task(description=f"Plan for: {mission}", agent=planner, expected_output="Plan")
-            t2 = Task(description="Write & Execute code based on plan.", agent=coder, expected_output="Code & Result")
-            t3 = Task(description="Review output.", agent=reviewer, expected_output="Summary")
-
-            # --- التشغيل ---
-            crew = Crew(
-                agents=[planner, coder, reviewer],
-                tasks=[t1, t2, t3],
-                verbose=True
-            )
-
-            result = crew.kickoff()
-            
-            status.success("✅ تم بنجاح.")
-            st.markdown(f"<div class='result-box'>{result}</div>", unsafe_allow_html=True)
-
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
+            # --- الخطوة 4: التدقيق ---
+            with st.spinner("4. المدقق يراجع النتائج..."):
+                # نمرر الكود ونتيجة التنفيذ للمدقق
+                full_context = f"PLAN: {plan}\nCODE: {code_response}\nEXECUTION RESULT: {execution_result}"
+                audit_report = auditor.ask("Review the code execution and confirm success.", context=full_context)
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>🛡️ Auditor</div>{audit_report}</div>", unsafe_allow_html=True)
+                
+        st.success("✅ تمت المهمة بنجاح.")
