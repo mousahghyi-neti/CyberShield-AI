@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V30.1 | Stable",
+    page_title="THE COUNCIL V31 | Agnostic Installer",
     page_icon="💀",
     layout="wide"
 )
@@ -32,7 +32,7 @@ try:
     if "GEMINI_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     else:
-        st.error("⚠️ مفتاح API مفقود. يرجى إضافته في Secrets.")
+        st.error("⚠️ مفتاح API مفقود.")
         st.stop()
 except:
     st.stop()
@@ -48,13 +48,12 @@ def get_available_models():
 
 # --- 2. الشريط الجانبي ---
 with st.sidebar:
-    st.header("⚙️ المحرك (Engine)")
+    st.header("⚙️ المحرك")
     available_models = get_available_models()
     if not available_models:
-        st.warning("لم يتم العثور على موديلات، جاري استخدام الافتراضي.")
+        st.warning("Using default model.")
         selected_model = "models/gemini-1.5-flash"
     else:
-        # محاولة اختيار الفلاش أو البرو تلقائياً
         default_ix = 0
         for i, m in enumerate(available_models):
             if "flash" in m:
@@ -63,9 +62,9 @@ with st.sidebar:
         selected_model = st.selectbox("اختر الموديل:", available_models, index=default_ix)
     
     st.divider()
-    st.info("💡 System Status: Online")
+    st.info("💡 V31 Update: Smart Separator Handling (Commas & Spaces)")
 
-# --- 3. كلاس الوكيل (Native Agent) ---
+# --- 3. كلاس الوكيل ---
 class NativeAgent:
     def __init__(self, name, role, model_id):
         self.name = name
@@ -74,8 +73,8 @@ class NativeAgent:
         You are {name}, {role}.
         CODING RULES:
         1. Use python blocks: ```python ... ```
-        2. DEPENDENCIES: If you need external libraries, declare them at the top: # pip: libname
-        3. ERROR FIXING: If asked to fix code, return ONLY the corrected code block.
+        2. DEPENDENCIES: Declare them at top: # pip: lib1 lib2
+        3. ERROR FIXING: Return ONLY the corrected code block.
         """
         self.model = genai.GenerativeModel(
             model_name=model_id,
@@ -90,7 +89,7 @@ class NativeAgent:
         except Exception as e:
             return f"Error: {str(e)}"
 
-# --- 4. دوال المعالجة الأساسية ---
+# --- 4. دوال المعالجة (تم تحديث ensure_dependencies) ---
 
 def extract_code(text):
     match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
@@ -99,12 +98,17 @@ def extract_code(text):
     return match.group(1) if match else None
 
 def ensure_dependencies(code):
+    """
+    V31 Fix: يقسم المكتبات بناءً على الفواصل (,) أو المسافات ( )
+    """
     logs = []
     matches = re.findall(r"#\s*pip:\s*([^\n\r]*)", code)
+    
     all_libs = []
     for match in matches:
         clean_match = match.split("#")[0]
-        libs = [lib.strip() for lib in clean_match.split(",") if lib.strip()]
+        # التغيير الجوهري هنا: التقسيم بـ Regex ليشمل الفواصل والمسافات
+        libs = [lib.strip() for lib in re.split(r'[,\s]+', clean_match) if lib.strip()]
         all_libs.extend(libs)
     
     all_libs = list(set(all_libs))
@@ -165,8 +169,8 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
             fix_prompt = f"""
             Your code failed with this error:
             {error_msg}
-            Fix the code. Ensure dependencies like '# pip: libname'.
-            Return only the full corrected code block.
+            Fix it. Ensure dependencies format: '# pip: lib1 lib2'.
+            Return ONLY the corrected code block.
             """
             current_code_text = agent.ask(fix_prompt, context=context_plan)
             attempt += 1
@@ -174,11 +178,10 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
     return "Unknown Error", logs_ui, current_code_text
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V30.1</h1>", unsafe_allow_html=True)
+st.markdown("<h1>💀 THE COUNCIL V31</h1>", unsafe_allow_html=True)
 st.caption(f"Mode: **Perfected Autonomous Loop** | Engine: **{selected_model}**")
 
-# --- هنا كان الخطأ في الصورة السابقة، تم تصحيحه ---
-mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخدم مكتبة yfinance لجلب سعر سهم Google ورسمه.")
+mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخرج البيانات من صفحة ويب.")
 
 if st.button("تنفيذ الهجوم ⚡"):
     if not mission:
@@ -186,22 +189,19 @@ if st.button("تنفيذ الهجوم ⚡"):
     else:
         results = st.container()
         
-        planner = NativeAgent("Strategist", "Create logical execution plans.", selected_model)
-        coder = NativeAgent("Developer", "Write robust python code with dependency handling.", selected_model)
-        auditor = NativeAgent("Auditor", "Analyze code results.", selected_model)
+        planner = NativeAgent("Strategist", "Plan logic.", selected_model)
+        coder = NativeAgent("Developer", "Write python code.", selected_model)
+        auditor = NativeAgent("Auditor", "Review results.", selected_model)
 
         with results:
-            # 1. التخطيط
-            with st.spinner("1. التخطيط الاستراتيجي..."):
+            with st.spinner("1. التخطيط..."):
                 plan = planner.ask(mission)
                 st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
             
-            # 2. الكود الأولي
-            with st.spinner("2. صياغة الكود الأولي..."):
-                initial_code = coder.ask("Write python code for this plan. Don't forget '# pip: lib' if needed.", context=plan)
+            with st.spinner("2. الكود الأولي..."):
+                initial_code = coder.ask("Write python code. Dependencies: # pip: lib1 lib2", context=plan)
             
-            # 3. الحلقة الذكية
-            with st.spinner("3. المعالجة، التثبيت، والتصحيح الذاتي..."):
+            with st.spinner("3. التشغيل الذاتي..."):
                 final_output, debug_logs, final_code = smart_execute_with_retry(initial_code, coder, plan)
                 
                 if debug_logs:
@@ -215,9 +215,8 @@ if st.button("تنفيذ الهجوم ⚡"):
                 else:
                     st.markdown(f"<div class='error-box'>{final_output}</div>", unsafe_allow_html=True)
 
-            # 4. التدقيق
-            with st.spinner("4. المصادقة النهائية..."):
-                report = auditor.ask("Audit this execution result.", context=f"{plan}\n{final_output}")
+            with st.spinner("4. التدقيق..."):
+                report = auditor.ask("Audit execution.", context=f"{plan}\n{final_output}")
                 st.markdown(f"<div class='agent-box'><div class='agent-name'>🛡️ Auditor</div>{report}</div>", unsafe_allow_html=True)
                 
         st.success("✅ تمت المهمة.")
