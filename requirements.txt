@@ -1,10 +1,9 @@
 streamlit
 google-generativeai
-# --- الترسانة الأساسية (لن يفشل الكود فيها أبداً) ---
 requests
 beautifulsoup4
 pandas
 numpy
 yfinance
-matplotlib
-scikit-learn
+# --- سلاح التخفي الجديد ---
+curl_cffi
