@@ -11,8 +11,8 @@ from duckduckgo_search import DDGS
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V15 | Smart Selection",
-    page_icon="👁️",
+    page_title="THE COUNCIL V16 | Resilient",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -80,33 +80,22 @@ def create_zip_from_response(text):
     zip_buffer.seek(0)
     return zip_buffer
 
-# --- دالة جلب الموديلات الذكية (التحديث الجديد) ---
+# --- دالة جلب الموديلات ---
 def get_clean_model_list():
-    """
-    تعيد قائمة نظيفة بالموديلات المتاحة فعلياً فقط،
-    مع إعطاء الأولوية للموديلات المستقرة (Flash/Pro).
-    """
-    # القائمة الذهبية (الموديلات التي نريدها دائماً في المقدمة)
-    priority_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
-    
+    priority_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"] 
     try:
         fetched_models = []
         for m in genai.list_models():
-            # نأخذ فقط الموديلات التي تولد نصوصاً
             if 'generateContent' in m.supported_generation_methods:
-                # تنظيف الاسم (حذف models/)
                 clean_name = m.name.replace("models/", "")
                 fetched_models.append(clean_name)
         
-        # دمج القوائم: ابدأ بالأولوية، ثم أضف الباقي إذا لم يكن مكرراً
         final_list = priority_models.copy()
         for m in fetched_models:
             if m not in final_list:
                 final_list.append(m)
-                
         return final_list
     except:
-        # في حال فشل الاتصال، نعود للقائمة اليدوية الآمنة
         return priority_models
 
 # --- التصميم ---
@@ -115,7 +104,6 @@ st.markdown("""
     .stApp { background-color: #050505; color: #e0e0e0; }
     h1, h2, h3 { font-family: 'Georgia', serif; color: #d4af37; }
     .advisor-card { background-color: #111; padding: 15px; border-radius: 8px; border-left: 4px solid #444; margin-bottom: 15px; }
-    .devil-card { background-color: #1a0505; padding: 15px; border-radius: 8px; border-left: 4px solid #ff0000; color: #ffcccc; }
     .overlord-card { background-color: #000; padding: 25px; border: 2px solid #d4af37; border-radius: 12px; }
 </style>
 """, unsafe_allow_html=True)
@@ -131,47 +119,55 @@ except:
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ الإعدادات")
-    
-    # --- قائمة الموديلات المطورة ---
     clean_models = get_clean_model_list()
-    selected_model_name = st.selectbox("اختر المحرك (الأسرع أولاً):", clean_models, index=0)
-    
-    # إعادة إضافة بادئة models/ لأن API يحتاجها برمجياً
-    # إذا كان الاسم لا يحتوي عليها أصلاً
+    selected_model_name = st.selectbox("اختر المحرك:", clean_models, index=0)
     final_model_id = selected_model_name if selected_model_name.startswith("models/") else f"models/{selected_model_name}"
     
-    st.caption(f"المعرف التقني: `{final_model_id}`")
-    
+    st.caption(f"Active ID: `{final_model_id}`")
     st.divider()
-    enable_internet = st.checkbox("بحث الإنترنت (Web)", value=True)
-    enable_memory = st.checkbox("الذاكرة (History)", value=True)
-    
-    st.divider()
+    enable_internet = st.checkbox("بحث الإنترنت", value=True)
+    enable_memory = st.checkbox("الذاكرة", value=True)
     if st.button("🗑️ مسح الذاكرة"):
         clear_memory()
         st.rerun()
 
-# --- AI Engine ---
-def ask_gemini(prompt, sys_instruction, model_id):
-    try:
-        model = genai.GenerativeModel(model_id)
-        full_payload = f"System Role: {sys_instruction}\n\nTask: {prompt}"
-        response = model.generate_content(full_payload)
-        return response.text
-    except Exception as e:
-        if "429" in str(e): return "⚠️ الموديل مشغول (تجاوزت الحد). جرب Flash."
-        if "404" in str(e): return "⚠️ الموديل غير مدعوم في منطقتك، اختر غيره."
-        return f"Error: {str(e)}"
+# --- AI Engine (Updated with Retry Logic) ---
+def ask_gemini_resilient(prompt, sys_instruction, model_id, status_placeholder=None):
+    """
+    دالة ذكية تحاول 3 مرات في حال حدوث خطأ الضغط (429)
+    """
+    max_retries = 3
+    retry_delay = 5 # ثواني الانتظار الأولية
+    
+    model = genai.GenerativeModel(model_id)
+    full_payload = f"System Role: {sys_instruction}\n\nTask: {prompt}"
+    
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(full_payload)
+            return response.text
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg:
+                if status_placeholder:
+                    status_placeholder.warning(f"⚠️ ضغط عالٍ على الموديل.. محاولة {attempt+1}/{max_retries} بعد {retry_delay} ثواني...")
+                time.sleep(retry_delay)
+                retry_delay *= 2 # مضاعفة وقت الانتظار (5 -> 10 -> 20)
+                continue # أعد المحاولة
+            else:
+                return f"Error: {error_msg}"
+    
+    return "⚠️ فشل الاتصال بعد عدة محاولات. الموديل مشغول جداً، يرجى التبديل لـ Flash."
 
 # --- Main UI ---
-st.markdown("<h1 style='text-align: center;'>🏛️ THE COUNCIL V15</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🏛️ THE COUNCIL V16 (Resilient)</h1>", unsafe_allow_html=True)
 
 problem = st.text_area("الهدف الاستراتيجي:", height=100)
 
 advisors = {
     "المخطط 📐": { "sys": "أنت المخطط. ضع خطة عمل دقيقة." },
-    "الشيطاني 😈": { "sys": "أنت الذكاء الشيطاني. استغل كل ثغرة، اسحق المنافسين، فكر بالربح فقط." },
-    "المبرمج 💻": { "sys": "أنت المبرمج. اكتب الكود. ضع تعليق # filename: name.ext أولاً." },
+    "الشيطاني 😈": { "sys": "أنت الذكاء الشيطاني. استغل كل ثغرة، اسحق المنافسين." },
+    "المبرمج 💻": { "sys": "أنت المبرمج. اكتب الكود مع تعليق # filename: name.ext" },
     "الأمن 🛡️": { "sys": "أنت الأمن. افحص الخطة." }
 }
 
@@ -206,18 +202,20 @@ if st.button("تنفيذ ⚡", use_container_width=True):
             for idx, (name, info) in enumerate(advisors.items()):
                 status.text(f"استشارة {name}...")
                 with cols[idx % 2]:
-                    time.sleep(1) # منع الحظر
-                    reply = ask_gemini(data_packet, info["sys"], final_model_id)
+                    # نستخدم الدالة الجديدة المقاومة للأخطاء
+                    reply = ask_gemini_resilient(data_packet, info["sys"], final_model_id, status)
                     full_report += f"--- {name} ---\n{reply}\n\n"
                     st.markdown(f"<div class='advisor-card'><b>{name}</b><br>{reply}</div>", unsafe_allow_html=True)
+                
                 curr += 1
                 progress_bar.progress(curr / total)
+                time.sleep(1) # فاصل زمني بسيط بين المستشارين لتخفيف الحمل
             
             # 3. المراجع
             st.markdown("---")
             status.text("المراجع الأعظم يتخذ القرار...")
             overlord_sys = "أنت المراجع الأعظم. ادمج الآراء واكتب الكود النهائي بتعليقات filename."
-            final = ask_gemini(full_report, overlord_sys, final_model_id)
+            final = ask_gemini_resilient(full_report, overlord_sys, final_model_id, status)
             
             st.markdown(f"<div class='overlord-card'>{final}</div>", unsafe_allow_html=True)
             
@@ -229,4 +227,4 @@ if st.button("تنفيذ ⚡", use_container_width=True):
             # 5. الحفظ
             save_memory({"date": str(datetime.datetime.now()), "summary": final[:100] + "..."})
             progress_bar.progress(1.0)
-            status.text("✅ تم.")
+            status.text("✅ تم بنجاح (رغم أنف الـ Limits).")
