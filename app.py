@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V31 | Agnostic Installer",
+    page_title="THE COUNCIL V32 | Heavy Artillery",
     page_icon="💀",
     layout="wide"
 )
@@ -62,7 +62,7 @@ with st.sidebar:
         selected_model = st.selectbox("اختر الموديل:", available_models, index=default_ix)
     
     st.divider()
-    st.info("💡 V31 Update: Smart Separator Handling (Commas & Spaces)")
+    st.info("💡 V32: Pre-loaded Arsenal + User Install Mode")
 
 # --- 3. كلاس الوكيل ---
 class NativeAgent:
@@ -73,8 +73,8 @@ class NativeAgent:
         You are {name}, {role}.
         CODING RULES:
         1. Use python blocks: ```python ... ```
-        2. DEPENDENCIES: Declare them at top: # pip: lib1 lib2
-        3. ERROR FIXING: Return ONLY the corrected code block.
+        2. ALWAYS declare dependencies: # pip: requests beautifulsoup4
+        3. ERROR FIXING: Return ONLY the corrected code.
         """
         self.model = genai.GenerativeModel(
             model_name=model_id,
@@ -89,7 +89,7 @@ class NativeAgent:
         except Exception as e:
             return f"Error: {str(e)}"
 
-# --- 4. دوال المعالجة (تم تحديث ensure_dependencies) ---
+# --- 4. دوال المعالجة (التحديث: التثبيت بصلاحيات --user) ---
 
 def extract_code(text):
     match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
@@ -98,36 +98,36 @@ def extract_code(text):
     return match.group(1) if match else None
 
 def ensure_dependencies(code):
-    """
-    V31 Fix: يقسم المكتبات بناءً على الفواصل (,) أو المسافات ( )
-    """
     logs = []
     matches = re.findall(r"#\s*pip:\s*([^\n\r]*)", code)
     
     all_libs = []
     for match in matches:
         clean_match = match.split("#")[0]
-        # التغيير الجوهري هنا: التقسيم بـ Regex ليشمل الفواصل والمسافات
+        # التقسيم الذكي (فواصل ومسافات)
         libs = [lib.strip() for lib in re.split(r'[,\s]+', clean_match) if lib.strip()]
         all_libs.extend(libs)
     
     all_libs = list(set(all_libs))
     
     if all_libs:
-        logs.append(f"📦 Requirements found: {', '.join(all_libs)}")
+        logs.append(f"📦 Requirements check: {', '.join(all_libs)}")
         for lib in all_libs:
             try:
                 __import__(lib)
+                # logs.append(f"🔹 {lib} is pre-installed.") # لا داعي لإزعاج المستخدم إذا كانت مثبتة
             except ImportError:
                 try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
+                    # V32 FIX: إضافة --user لتجاوز مشاكل الصلاحيات
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", lib])
                     logs.append(f"✅ Installed: {lib}")
                 except Exception as e:
                     try:
+                        # محاولة أخيرة بدون --user
                         subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
-                        logs.append(f"✅ Installed (Force): {lib}")
+                        logs.append(f"✅ Installed (System): {lib}")
                     except:
-                        logs.append(f"❌ Failed to install: {lib}")
+                        logs.append(f"❌ Failed to install: {lib} (Try adding it to requirements.txt)")
     return logs
 
 def run_code_safe(code):
@@ -167,10 +167,9 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
                 return f"❌ Failed after retries. Error:\n{error_msg}", logs_ui, current_code_text
             
             fix_prompt = f"""
-            Your code failed with this error:
-            {error_msg}
-            Fix it. Ensure dependencies format: '# pip: lib1 lib2'.
-            Return ONLY the corrected code block.
+            Error: {error_msg}
+            Fix the code. Ensure dependencies format: '# pip: lib1 lib2'.
+            Return ONLY the corrected code.
             """
             current_code_text = agent.ask(fix_prompt, context=context_plan)
             attempt += 1
@@ -178,8 +177,8 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
     return "Unknown Error", logs_ui, current_code_text
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V31</h1>", unsafe_allow_html=True)
-st.caption(f"Mode: **Perfected Autonomous Loop** | Engine: **{selected_model}**")
+st.markdown("<h1>💀 THE COUNCIL V32</h1>", unsafe_allow_html=True)
+st.caption(f"Mode: **Pre-Loaded Arsenal** | Engine: **{selected_model}**")
 
 mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخرج البيانات من صفحة ويب.")
 
