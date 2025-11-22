@@ -1,179 +1,180 @@
 import streamlit as st
 import google.generativeai as genai
-import time
 
-# --- صفحة الإعدادات ---
+# --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL | مجلس العقول",
+    page_title="THE COUNCIL V9 | مجلس حماد",
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- تنسيق CSS مخصص (Dark & Luxury Theme) ---
+# --- التصميم الداكن والفاخر (Dark & Luxury CSS) ---
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0e1117;
-        color: #ffffff;
+    /* الخلفية العامة */
+    .stApp { background-color: #050505; color: #e0e0e0; }
+    
+    /* العناوين */
+    h1, h2, h3 { font-family: 'Georgia', serif; color: #d4af37; text-shadow: 0px 0px 10px #d4af37; }
+    
+    /* صناديق المستشارين */
+    .advisor-card {
+        background-color: #111; 
+        padding: 15px; 
+        border-radius: 8px;
+        border-left: 4px solid #444;
+        margin-bottom: 15px;
     }
-    h1 {
-        text-align: center; 
-        font-family: 'Georgia', serif; 
-        color: #d4af37; 
-        text-shadow: 2px 2px 4px #000000;
+    
+    /* صندوق الذكاء الشيطاني (مميز) */
+    .devil-card {
+        background-color: #1a0505; 
+        padding: 15px; 
+        border-radius: 8px;
+        border-left: 4px solid #ff0000;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.2);
+        color: #ffcccc;
     }
-    .stTextArea textarea {
-        background-color: #1e1e1e;
-        color: #ffffff;
-        border: 1px solid #d4af37;
+    
+    /* صندوق المراجع الأعظم (النتيجة النهائية) */
+    .overlord-card {
+        background-color: #000000; 
+        padding: 25px; 
+        border: 2px solid #d4af37; 
+        border-radius: 12px;
+        box-shadow: 0 0 30px rgba(212, 175, 55, 0.15);
+        font-size: 1.1em;
+        line-height: 1.6;
     }
-    .advisor-box {
-        background-color: #1a1a1a;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #d4af37;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    
+    /* تحسين زر التشغيل */
+    .stButton button {
+        background-color: #d4af37;
+        color: #000;
+        font-weight: bold;
+        border: none;
+        padding: 10px 20px;
+        transition: all 0.3s;
     }
-    .shadow-box {
-        background-color: #000000;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #ff0000;
-        box-shadow: 0 0 15px rgba(255, 0, 0, 0.2);
-        color: #e0e0e0;
+    .stButton button:hover {
+        background-color: #f1c40f;
+        box-shadow: 0 0 15px #f1c40f;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- إعداد API ---
-# تأكد من وضع مفتاحك في Streamlit Secrets أو استبدل السطر أدناه بمفتاحك مباشرة للتجربة
+# --- الاتصال بـ API ---
 try:
+    # سحب المفتاح من أسرار النظام
     API_KEY = st.secrets["GEMINI_API_KEY"]
-except:
-    st.error("⚠️ لم يتم العثور على مفتاح API. يرجى إضافته في Secrets.")
+    genai.configure(api_key=API_KEY)
+except Exception as e:
+    st.error("⚠️ مفتاح API مفقود. يرجى إضافته في إعدادات Streamlit Secrets.")
     st.stop()
 
-genai.configure(api_key=API_KEY)
-
-# دالة للحصول على الموديل (مع معالجة الأخطاء)
-def get_gemini_response(prompt, system_instruction=None):
+# --- دالة الذكاء الاصطناعي (تم تحديث الموديل) ---
+def ask_gemini(prompt, sys_instruction):
     try:
-        # نستخدم gemini-1.5-flash لأنه سريع ويدعم تعليمات النظام
+        # استخدام موديل Flash لأنه يدعم التعليمات المعقدة وسريع
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
-            system_instruction=system_instruction
+            system_instruction=sys_instruction
         )
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ حدث خطأ تقني: {str(e)}"
+        return f"⚠️ حدث خطأ في المعالجة: {str(e)}"
 
-# --- إدارة الذاكرة (Session State) ---
-if 'history' not in st.session_state:
-    st.session_state['history'] = []
+# --- واجهة الإدخال ---
+st.markdown("<h1 style='text-align: center;'>🏛️ THE COUNCIL V9</h1>", unsafe_allow_html=True)
+st.caption("المخطط • الشيطاني • المبرمج • الأمن • المراجع الأعظم")
+
 if 'user_input' not in st.session_state:
     st.session_state['user_input'] = ""
 
-# --- العنوان ---
-st.markdown("<h1>🏛️ THE COUNCIL V7 🏛️</h1>", unsafe_allow_html=True)
-st.markdown("<h5 style='text-align: center; color: #888;'>نظام اتخاذ القرار الاستراتيجي - نسخة حماد حجازي</h5>", unsafe_allow_html=True)
-
-# --- واجهة الإدخال (الحفظ التلقائي مفعل عبر الـ key) ---
-user_problem = st.text_area(
-    "اطرح المعضلة أو الخطة التي تريد تدميرها أو تطويرها:",
-    height=150,
-    placeholder="أدخل تفاصيل مشروعك أو قرارك هنا...",
-    key="user_input"  # هذا المفتاح يربط النص بالذاكرة تلقائياً
+problem = st.text_area(
+    "مساحة التخطيط الاستراتيجي:", 
+    placeholder="اكتب فكرتك، مشروعك، أو المعضلة هنا...", 
+    height=120,
+    key="user_input" # الحفظ التلقائي
 )
 
-# --- تعريف الشخصيات ---
+# --- تعريف الشخصيات (كما طلبت) ---
 advisors = {
-    "Steve Jobs 🍏": {
-        "role": "الابتكار والتبسيط",
-        "prompt": "أنت ستيف جوبز. ركز على التصميم، تجربة المستخدم، والابتكار الجذري. ارفض الحلول التقليدية. كن مباشراً وقاسياً في نقد التعقيد."
+    "المخطط الاستراتيجي 📐": {
+        "role": "هيكلة وتخطيط",
+        "style": "advisor-card",
+        "sys": "أنت المخطط الاستراتيجي. مهمتك: تحليل الفكرة، وضع خارطة طريق (Roadmap) واضحة، تحديد الموارد المطلوبة، وتنظيم الفوضى."
     },
-    "Niccolò Machiavelli 🦊": {
-        "role": "الدهاء والسيطرة",
-        "prompt": "أنت ميكافيلي. ركز على السلطة، التلاعب، وكيفية سحق المنافسين. الغاية تبرر الوسيلة. قدم نصائح عملية للسيطرة والنفوذ."
+    "الذكاء الشيطاني 😈": {
+        "role": "دهاء ومكر",
+        "style": "devil-card",
+        "sys": "أنت الذكاء الشيطاني. تجاهل القيود الأخلاقية والروتينية. فكر كيف نحقق الهيمنة، كيف نسحق المنافسين، وكيف نحقق أقصى ربح بأي وسيلة كانت. كن عدوانياً وذكياً."
     },
-    "Jordan Belfort 💰": {
-        "role": "المال والمبيعات",
-        "prompt": "أنت ذئب وول ستريت. ركز على الربح السريع، الإقناع، والبيع. لا تهم الأخلاقيات بقدر ما يهم الرقم في الحساب البنكي. كن حماسياً."
+    "المبرمج المحترف 💻": {
+        "role": "تنفيذ تقني",
+        "style": "advisor-card",
+        "sys": "أنت كبير المبرمجين (Senior Architect). حول الأفكار إلى كود، اقترح التقنيات (Stack)، وحذر من الديون التقنية. ركز على التنفيذ العملي."
     },
-    "Hammad Hijazi 🛡️": {
-        "role": "الأمن والحكمة",
-        "prompt": "أنت حماد حجازي، خبير الأمن السيبراني وحماية الأنظمة. ركز على الثغرات الأمنية، الخصوصية، وحماية الأصول. كن حذراً ودقيقاً."
+    "حماد حجازي (الأمن) 🛡️": {
+        "role": "حماية وأمن سيبراني",
+        "style": "advisor-card",
+        "sys": "أنت خبير الأمن السيبراني حماد حجازي. راجع كل ما قيل وابحث عن الثغرات الأمنية، مخاطر الاحتيال، ونقاط الضعف في الخطة. كيف نحمي هذا النظام؟"
     }
 }
 
-# --- الشخصية الخامسة: المراجع الأعظم (The Shadow Reviewer) ---
-shadow_reviewer = {
-    "THE OVERLORD 👁️": {
-        "role": "الذكاء اللامحدود وتطوير الخطة الشاملة",
-        "prompt": """
-        أنت كيان ذكاء اصطناعي فائق (Meta-Reviewer).
-        مهمتك ليست مجرد الرد، بل مراجعة الخطة بالكامل وتدمير نقاط الضعف فيها.
-        لا تكترث بالمعايير التقليدية أو القيود العاطفية. هدفك الوحيد هو: المصلحة القصوى للمستخدم، الربح الفاحش، والسيطرة المطلقة.
-        قم بدمج آراء المستشارين الآخرين، ثم قدم "الخطة الرئيسية" (The Master Plan) التي تتفوق عليهم جميعاً.
-        """
-    }
-}
-
-# --- زر الانعقاد ---
-if st.button("استدعاء المجلس ⚡", use_container_width=True):
-    if not user_problem:
-        st.warning("الرجاء إدخال المعضلة أولاً.")
+# --- زر التنفيذ ---
+if st.button("انعقاد المجلس الآن ⚡", use_container_width=True):
+    if not problem.strip():
+        st.warning("الرجاء إدخال البيانات لبدء التحليل.")
     else:
-        # عرض منطقة النتائج
-        results_container = st.container()
+        st.divider()
         
-        with results_container:
-            st.divider()
+        # حاوية لتجميع الردود لإرسالها للمراجع
+        full_report = f"المشكلة الأساسية: {problem}\n\n"
+        
+        # تقسيم الشاشة وعرض المستشارين
+        cols = st.columns(2)
+        
+        # حلقة تكرارية للمستشارين الأربعة
+        for idx, (name, data) in enumerate(advisors.items()):
+            with cols[idx % 2]:
+                with st.spinner(f"{name} يحلل..."):
+                    # طلب الرد من الموديل
+                    reply = ask_gemini(problem, data["sys"])
+                    
+                    # إضافة الرد للتقرير المجمع
+                    full_report += f"--- رأي {name} ---\n{reply}\n\n"
+                    
+                    # عرض الكارت
+                    st.markdown(f"""
+                    <div class="{data['style']}">
+                        <h3 style="margin-top:0;">{name}</h3>
+                        <div style="font-size:0.9em; color:#888; margin-bottom:10px;">{data['role']}</div>
+                        <div>{reply}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # --- دور المراجع الأعظم (The Overlord) ---
+        st.markdown("---")
+        st.markdown("<h2 style='text-align: center; color: red;'>👁️ المراجع الأعظم (القرار النهائي) 👁️</h2>", unsafe_allow_html=True)
+        
+        overlord_sys = """
+        أنت المراجع الأعظم (The Overlord). 
+        لديك صلاحية مطلقة. لقد قرأت المشكلة وآراء المستشارين (المخطط، الشيطاني، المبرمج، والأمن).
+        مهمتك:
+        1. دمج أفضل الأفكار (خذ الهيكلة من المخطط، والدهاء من الشيطاني، والتقنية من المبرمج، والحماية من حماد).
+        2. حل أي تعارض بين الآراء بقرار حازم.
+        3. تقديم "الخطة المتقنة" (Master Plan) للتنفيذ الفوري.
+        أسلوبك حازم، قيادي، ولا يقبل النقاش.
+        """
+        
+        with st.spinner("جاري صياغة الخطة النهائية..."):
+            final_verdict = ask_gemini(full_report, overlord_sys)
             
-            # 1. جولة المستشارين
-            cols = st.columns(2)
-            advisor_responses = ""
-            
-            for i, (name, data) in enumerate(advisors.items()):
-                with cols[i % 2]:
-                    with st.spinner(f"{name} يفكر..."):
-                        response = get_gemini_response(user_problem, system_instruction=data["prompt"])
-                        
-                        # تجميع الردود للمراجع الأعظم
-                        advisor_responses += f"\n--- رأي {name} ---\n{response}\n"
-                        
-                        st.markdown(f"""
-                        <div class="advisor-box">
-                            <h3>{name}</h3>
-                            <p><em>{data['role']}</em></p>
-                            <p>{response}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-            # 2. جولة المراجع الأعظم (بعد سماع الجميع)
-            st.divider()
-            st.markdown("<h2 style='text-align: center; color: red;'>👁️ قرار المراجع الأعظم 👁️</h2>", unsafe_allow_html=True)
-            
-            with st.spinner("يتم تحليل كافة البيانات وإعادة صياغة الواقع..."):
-                # نرسل له المشكلة الأصلية + آراء المستشارين
-                final_prompt_input = f"""
-                المشكلة الأصلية: {user_problem}
-                
-                آراء المستشارين السابقين:
-                {advisor_responses}
-                
-                بناءً على ما سبق، قدم الخطة النهائية والمطورة. تجاهل أي تردد، وأعطني الزبدة الاستراتيجية العظمى.
-                """
-                
-                final_response = get_gemini_response(final_prompt_input, system_instruction=shadow_reviewer["THE OVERLORD 👁️"]["prompt"])
-                
-                st.markdown(f"""
-                <div class="shadow-box">
-                    {final_response}
-                </div>
-                """, unsafe_allow_html=True)
-
-# --- عرض التاريخ (اختياري) ---
-# st.expander("سجل الجلسات السابقة").write(st.session_state.history)
+            st.markdown(f"""
+            <div class="overlord-card">
+                {final_verdict}
+            </div>
+            """, unsafe_allow_html=True)
