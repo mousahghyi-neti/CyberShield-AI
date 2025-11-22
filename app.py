@@ -5,26 +5,20 @@ import io
 import sys
 import subprocess
 import re
-import time
 from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
-st.set_page_config(
-    page_title="THE COUNCIL V41 | Forensic Learning",
-    page_icon="🧠",
-    layout="wide"
-)
+st.set_page_config(page_title="THE COUNCIL V42 | Precision Strike", page_icon="🎯", layout="wide")
 
 # --- التصميم ---
 st.markdown("""
 <style>
-    .stApp { background-color: #050505; color: #e0e0e0; }
-    h1 { color: #ff3333; font-family: 'Courier New', monospace; text-align:center; text-shadow: 0 0 15px red; }
-    .agent-box { border-left: 4px solid #d4af37; background: #111; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
-    .fixer-box { border-left: 4px solid #00ffff; background: #001a1a; padding: 15px; margin-bottom: 10px; }
-    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
-    .error-box { background: #2a0000; padding: 10px; border: 1px solid #ff0000; color: #ffaaaa; font-size: 0.9em; }
-    .html-dump { font-size: 0.7em; color: #555; background: #000; border: 1px dashed #333; padding: 5px; max-height: 100px; overflow: hidden; }
+    .stApp { background-color: #000000; color: #e0e0e0; }
+    h1 { color: #00ffcc; font-family: monospace; text-align:center; text-shadow: 0 0 10px #00ffcc; }
+    .agent-box { border-left: 4px solid #d4af37; background: #111; padding: 15px; margin-bottom: 10px; }
+    .nav-box { border-left: 4px solid #ff00ff; background: #1a001a; padding: 15px; margin-bottom: 10px; }
+    .output-box { background: #0a0a0a; padding: 10px; border: 1px solid #00ff00; font-family: monospace; color: #00ff00; white-space: pre-wrap; }
+    .error-box { background: #2a0000; padding: 10px; border: 1px solid #ff0000; color: #ffaaaa; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -48,29 +42,34 @@ with st.sidebar:
     models = get_available_models()
     default_ix = next((i for i, m in enumerate(models) if "flash" in m), 0) if models else 0
     selected_model = st.selectbox("Model:", models if models else ["models/gemini-1.5-flash"], index=default_ix)
-    st.info("💡 V41: **Forensic Debugging**\nFeeds raw HTML back to AI on failure.")
+    st.info("💡 V42 Secret: **Target Class '.msgg'**")
 
 # --- الوكيل ---
 class NativeAgent:
     def __init__(self, name, role, model_id):
         self.name = name
         self.role = role
+        # تعليمات محدثة بالكلاس الصحيح
         sys_instruction = f"""
         You are {name}, {role}.
         RULES:
         1. **USE curl_cffi**: `from curl_cffi import requests`. Impersonate "chrome110".
-        2. **NO ASYNC**: Use synchronous code only.
-        3. **PRINT**: You MUST print the found data using `print()`.
-        4. **DEPS**: # pip: curl_cffi beautifulsoup4
+        2. **TARGET**: Go to 'https://receive-smss.com/'. Find active number link.
+        3. **SELECTOR SECRET**: Messages are in `<div class="msgg">`. 
+           - Sender/Time is usually in a sibling or child div like `c_from` or just text.
+           - Text is inside `msgg`.
+        4. **PRINT**: Cleanly print "Sender | Message | Time" for each found SMS.
+        5. **DEPS**: # pip: curl_cffi beautifulsoup4
         """
         self.model = genai.GenerativeModel(model_name=model_id, system_instruction=sys_instruction)
 
     def ask(self, prompt, context=""):
         full_prompt = f"CONTEXT:\n{context}\n\nTASK:\n{prompt}"
-        try: return self.model.generate_content(full_prompt).text
+        try:
+            return self.model.generate_content(full_prompt).text
         except Exception as e: return f"Error: {str(e)}"
 
-# --- أدوات المعالجة ---
+# --- الأدوات ---
 def extract_code(text):
     match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
     if not match: match = re.search(r"```\n(.*?)```", text, re.DOTALL)
@@ -85,6 +84,7 @@ def ensure_dependencies(code):
         libs = [l.strip() for l in re.split(r'[,\s]+', clean) if l.strip()]
         all_libs.extend(libs)
     all_libs = list(set(all_libs))
+    
     if all_libs:
         for lib in all_libs:
             try: __import__(lib)
@@ -100,25 +100,15 @@ def run_code_safe(code):
         return True, buffer.getvalue()
     except Exception as e: return False, str(e)
 
-# --- 🔍 المحقق الجنائي (The Forensic Analyzer) ---
-def get_html_structure(code_output):
-    """
-    إذا قام الكود بطباعة HTML عند الفشل (وهذا ما سنطلبه)، هذه الدالة تستخرجه.
-    """
-    if "HTML_DUMP_START" in code_output:
-        try:
-            html_part = code_output.split("HTML_DUMP_START")[1].split("HTML_DUMP_END")[0]
-            # تنظيف الـ HTML لتقليل حجم التوكنز (نأخذ أهم الأجزاء)
-            soup_preview = html_part[:4000] # نأخذ أول 4000 حرف فقط للتحليل
-            return soup_preview
-        except:
-            return "HTML Dump failed parsing."
-    return None
+def validate_output(output):
+    if "http error" in output.lower(): return False, "HTTP Error."
+    if "found 0 messages" in output.lower() and "msgg" not in output.lower(): return False, "Zero data."
+    return True, "Valid"
 
-# --- 🧠 حلقة التعلم والتصحيح (Learning Loop) ---
-def smart_execute_with_learning_loop(initial_code_response, fixer_agent, context_plan):
+# --- الحلقة الذكية ---
+def smart_execute_with_hive(initial_code_response, fixer_agent, context_plan):
     current_code_text = initial_code_response
-    max_retries = 4
+    max_retries = 3
     attempt = 0
     logs_ui = []
 
@@ -129,113 +119,74 @@ def smart_execute_with_learning_loop(initial_code_response, fixer_agent, context
         dep_logs = ensure_dependencies(code)
         if dep_logs: logs_ui.extend(dep_logs)
 
-        # تشغيل الكود
         success, output = run_code_safe(code)
-
-        # --- منطق التحقق المتقدم ---
-        is_valid = False
-        fail_reason = ""
+        is_valid, validation_msg = False, ""
         
-        if not success:
-            fail_reason = "Runtime Error (Crash)"
-        elif "0 messages" in output or "No messages found" in output or not output.strip():
-            fail_reason = "Logical Failure (Zero Data)"
-        else:
-            is_valid = True
+        if success: is_valid, validation_msg = validate_output(output)
 
-        # --- النجاح ---
-        if is_valid:
+        if success and is_valid:
             return f"✅ Success:\n{output}", logs_ui, current_code_text
-        
-        # --- الفشل والتعلم ---
         else:
-            # استخراج الـ HTML إذا كان المبرمج قد طبعه
-            html_evidence = get_html_structure(output)
+            error_details = output if not success else f"Logic Fail: {validation_msg}\nOutput:\n{output}"
+            logs_ui.append(f"⚠️ Attempt {attempt+1} Failed. Retrying with fix...")
             
-            logs_ui.append(f"⚠️ Attempt {attempt+1} Failed: {fail_reason}")
+            if attempt == max_retries: return f"❌ Failed:\n{error_details}", logs_ui, current_code_text
             
-            if attempt == max_retries: return f"❌ Failed:\n{output}", logs_ui, current_code_text
+            fix_prompt = f"""
+            Execution failed. Output: "{error_details}"
             
-            # بناء الأمر للإصلاح (Prompt Engineering)
-            if html_evidence:
-                fix_prompt = f"""
-                EXECUTION FAILED: {fail_reason}
-                
-                🔬 FORENSIC EVIDENCE (Actual Page HTML):
-                ```html
-                {html_evidence}
-                ```
-                
-                ANALYSIS:
-                Look at the HTML above. The previous CSS selectors (class names) were WRONG.
-                Find the correct class for the message container (e.g., look for 'msg', 'row', 'sms', or just table rows).
-                
-                FIX:
-                Rewrite the code using the CORRECT selectors found in the HTML evidence.
-                """
-                logs_ui.append("🔬 Analyzing HTML Dump to fix selectors...")
-            else:
-                # إذا لم يكن هناك HTML، نطلب من الكود القادم طباعته
-                fix_prompt = f"""
-                EXECUTION FAILED: {fail_reason}
-                Output: "{output}"
-                
-                DIAGNOSTIC MODE REQUIRED:
-                The code scraped 0 messages. We don't know why.
-                
-                REWRITE THE CODE TO:
-                1. Use 'curl_cffi' to get the page.
-                2. PRINT the raw HTML structure using: 
-                   `print("HTML_DUMP_START"); print(soup.prettify()[:4000]); print("HTML_DUMP_END")`
-                3. Try a very broad search (e.g., find all 'div's with text length > 20).
-                """
-                logs_ui.append("🕵️ Requesting HTML Dump for analysis...")
-
+            SECRET INFO: Forensic analysis showed messages are in `<div class="msgg">`.
+            
+            TASK:
+            1. Navigate to homepage -> Find active number link.
+            2. Go to number page.
+            3. Find all `div` with class `msgg`.
+            4. Extract text from them.
+            5. Print nicely.
+            
+            Return ONLY the corrected code.
+            """
             current_code_text = fixer_agent.ask(fix_prompt, context=context_plan)
             attempt += 1
             
     return "Unknown", logs_ui, current_code_text
 
 # --- الواجهة ---
-st.markdown("<h1>🧠 THE COUNCIL V41</h1>", unsafe_allow_html=True)
-st.caption(f"Protocol: **Fail -> Dump HTML -> Learn -> Fix** | Engine: **{selected_model}**")
+st.markdown("<h1>🎯 THE COUNCIL V42</h1>", unsafe_allow_html=True)
+st.caption(f"Protocol: **Known Selector (.msgg)** | Engine: **{selected_model}**")
 
-st.info("نحن في مركب واحد. إذا فشل الكود في جلب البيانات، سيقوم بنسخ كود الموقع وتحليله لإصلاح نفسه.")
+mission = st.text_area("أدخل المهمة التقنية:", height=100, value="استخرج الرسائل باستخدام الكلاس السري.")
 
-mission = st.text_area("المهمة:", height=100, placeholder="مثال: استخرج الرسائل من https://receive-smss.com/")
-
-if st.button("إثبات الكفاءة (Prove It) ⚡"):
+if st.button("الهجوم النهائي (Final Strike) ⚡"):
     if not mission:
         st.warning("أدخل المهمة.")
     else:
         results = st.container()
         
-        planner = NativeAgent("Strategist", "Plan forensic extraction.", selected_model)
-        coder = NativeAgent("Developer", "Write scraping code.", selected_model)
-        fixer = NativeAgent("The Fixer", "Analyze HTML dumps and fix selectors.", selected_model)
+        planner = NativeAgent("Navigator", "Plan attack using known selector.", selected_model)
+        coder = NativeAgent("Developer", "Write scraping code with .msgg selector.", selected_model)
+        fixer = NativeAgent("The Fixer", "Fix any remaining bugs.", selected_model)
         
         with results:
-            with st.spinner("1. التخطيط الاستراتيجي..."):
-                plan = planner.ask("Goal: Go to 'https://receive-smss.com/', find the first active number link, and scrape messages. If it fails, PRINT THE HTML to debug.")
-                st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
+            with st.spinner("1. التخطيط..."):
+                plan = planner.ask("Target: receive-smss.com. Goal: Find active number, then scrape messages inside 'div.msgg'.")
+                st.markdown(f"<div class='nav-box'><div class='agent-name' style='color:#ff00ff'>🧭 Navigator</div>{plan}</div>", unsafe_allow_html=True)
             
-            with st.spinner("2. الكود الأولي..."):
-                initial_code = coder.ask("Write python code using curl_cffi. 1. Go to homepage. 2. Find '/sms/' link. 3. Scrape. IMPORTANT: If 0 messages found, print 'No messages found' AND print the first 2000 chars of HTML soup for debugging.", context=plan)
-            
-            with st.spinner("3. دورة التعلم والتنفيذ (Learning Loop)..."):
-                final_output, debug_logs, final_code = smart_execute_with_learning_loop(initial_code, fixer, plan)
+            with st.spinner("2. تشغيل الكود الدقيق..."):
+                initial_code = coder.ask("Write python code. 1. Get homepage. 2. Find number link. 3. Scrape 'div.msgg'. Print results.", context=plan)
+                final_output, debug_logs, final_code = smart_execute_with_hive(initial_code, fixer, plan)
                 
                 if debug_logs:
                     log_html = "<br>".join([f"<code>{l}</code>" for l in debug_logs])
                     st.markdown(f"<div class='install-box'>{log_html}</div>", unsafe_allow_html=True)
                 
-                st.markdown(f"<div class='fixer-box'><div class='agent-name' style='color:#00ffff'>🔧 Final Winning Code</div>{final_code}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='agent-box'><div class='agent-name'>💻 Developer (Live Code)</div>{final_code}</div>", unsafe_allow_html=True)
                 
                 if "Success" in final_output:
-                    clean_out = final_output.replace("✅ Success:\n", "").replace("HTML_DUMP_START", "").split("HTML_DUMP_END")[-1] # تنظيف
-                    st.markdown(f"### 🏆 النتيجة النهائية:")
+                    clean_out = final_output.replace("✅ Success:\n", "")
+                    st.markdown(f"### 🎯 الغنيمة النهائية:")
                     st.markdown(f"<div class='output-box'>{clean_out}</div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div class='error-box'>{final_output}</div>", unsafe_allow_html=True)
-        
-        st.success("✅ الدورة اكتملت.")
+    
+    st.success("✅ تمت المهمة.")
