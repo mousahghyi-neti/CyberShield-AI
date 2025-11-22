@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 # --- إعدادات الصفحة ---
 st.set_page_config(
-    page_title="THE COUNCIL V32 | Heavy Artillery",
+    page_title="THE COUNCIL V33 | Ghost Protocol",
     page_icon="💀",
     layout="wide"
 )
@@ -62,19 +62,31 @@ with st.sidebar:
         selected_model = st.selectbox("اختر الموديل:", available_models, index=default_ix)
     
     st.divider()
-    st.info("💡 V32: Pre-loaded Arsenal + User Install Mode")
+    st.info("💡 V33: Added 'curl_cffi' for 403 Bypass")
 
-# --- 3. كلاس الوكيل ---
+# --- 3. كلاس الوكيل (تحديث العقلية) ---
 class NativeAgent:
     def __init__(self, name, role, model_id):
         self.name = name
         self.role = role
+        # --- التحديث الجوهري هنا ---
+        # تعليمات جديدة للمبرمج لاستخدام curl_cffi عند الضرورة
         sys_instruction = f"""
         You are {name}, {role}.
+        
         CODING RULES:
         1. Use python blocks: ```python ... ```
-        2. ALWAYS declare dependencies: # pip: requests beautifulsoup4
-        3. ERROR FIXING: Return ONLY the corrected code.
+        2. DEPENDENCIES: # pip: lib1 lib2
+        
+        3. **STEALTH MODE (IMPORTANT)**: 
+           If the task involves web scraping and might get blocked (403 Forbidden), 
+           DO NOT use 'requests'. Instead, use 'curl_cffi'.
+           Example pattern:
+           # pip: curl_cffi
+           from curl_cffi import requests
+           r = requests.get(url, impersonate="chrome110")
+           
+        4. ERROR FIXING: Return ONLY the corrected code.
         """
         self.model = genai.GenerativeModel(
             model_name=model_id,
@@ -89,7 +101,7 @@ class NativeAgent:
         except Exception as e:
             return f"Error: {str(e)}"
 
-# --- 4. دوال المعالجة (التحديث: التثبيت بصلاحيات --user) ---
+# --- 4. دوال المعالجة ---
 
 def extract_code(text):
     match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
@@ -100,11 +112,9 @@ def extract_code(text):
 def ensure_dependencies(code):
     logs = []
     matches = re.findall(r"#\s*pip:\s*([^\n\r]*)", code)
-    
     all_libs = []
     for match in matches:
         clean_match = match.split("#")[0]
-        # التقسيم الذكي (فواصل ومسافات)
         libs = [lib.strip() for lib in re.split(r'[,\s]+', clean_match) if lib.strip()]
         all_libs.extend(libs)
     
@@ -115,19 +125,16 @@ def ensure_dependencies(code):
         for lib in all_libs:
             try:
                 __import__(lib)
-                # logs.append(f"🔹 {lib} is pre-installed.") # لا داعي لإزعاج المستخدم إذا كانت مثبتة
             except ImportError:
                 try:
-                    # V32 FIX: إضافة --user لتجاوز مشاكل الصلاحيات
                     subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", lib])
                     logs.append(f"✅ Installed: {lib}")
                 except Exception as e:
                     try:
-                        # محاولة أخيرة بدون --user
                         subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
                         logs.append(f"✅ Installed (System): {lib}")
                     except:
-                        logs.append(f"❌ Failed to install: {lib} (Try adding it to requirements.txt)")
+                        logs.append(f"❌ Failed to install: {lib}")
     return logs
 
 def run_code_safe(code):
@@ -168,7 +175,8 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
             
             fix_prompt = f"""
             Error: {error_msg}
-            Fix the code. Ensure dependencies format: '# pip: lib1 lib2'.
+            If this is a 403 Forbidden error, rewrite the code using 'curl_cffi' library to impersonate a browser.
+            Remember: # pip: curl_cffi
             Return ONLY the corrected code.
             """
             current_code_text = agent.ask(fix_prompt, context=context_plan)
@@ -177,10 +185,10 @@ def smart_execute_with_retry(initial_code_response, agent, context_plan):
     return "Unknown Error", logs_ui, current_code_text
 
 # --- الواجهة الرئيسية ---
-st.markdown("<h1>💀 THE COUNCIL V32</h1>", unsafe_allow_html=True)
-st.caption(f"Mode: **Pre-Loaded Arsenal** | Engine: **{selected_model}**")
+st.markdown("<h1>💀 THE COUNCIL V33</h1>", unsafe_allow_html=True)
+st.caption(f"Mode: **Ghost Protocol (Anti-403)** | Engine: **{selected_model}**")
 
-mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخرج البيانات من صفحة ويب.")
+mission = st.text_area("أدخل المهمة التقنية:", height=100, placeholder="مثال: استخرج البيانات من صفحة ويب محمية.")
 
 if st.button("تنفيذ الهجوم ⚡"):
     if not mission:
@@ -197,8 +205,9 @@ if st.button("تنفيذ الهجوم ⚡"):
                 plan = planner.ask(mission)
                 st.markdown(f"<div class='agent-box'><div class='agent-name'>📐 Strategist</div>{plan}</div>", unsafe_allow_html=True)
             
-            with st.spinner("2. الكود الأولي..."):
-                initial_code = coder.ask("Write python code. Dependencies: # pip: lib1 lib2", context=plan)
+            with st.spinner("2. الكود الأولي (Stealth Mode)..."):
+                # نلمح له باستخدام التخفي
+                initial_code = coder.ask("Write python code. If scraping, use 'curl_cffi' to avoid 403 errors. Deps: # pip: curl_cffi", context=plan)
             
             with st.spinner("3. التشغيل الذاتي..."):
                 final_output, debug_logs, final_code = smart_execute_with_retry(initial_code, coder, plan)
